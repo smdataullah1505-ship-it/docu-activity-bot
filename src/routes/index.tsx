@@ -78,23 +78,70 @@ const MODES: {
 
 type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
 
-function LectureLab() {
-  const [step, setStep] = useState<Step>("upload");
-  const [fileName, setFileName] = useState<string>("");
-  const [documentText, setDocumentText] = useState<string>("");
-  const [topics, setTopics] = useState<string[]>([]);
-  const [selectedTopic, setSelectedTopic] = useState<string>("");
-  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(null);
+const STORAGE_KEY = "lecturelab.session.v2";
 
-  const [mcqDifficulty, setMcqDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("mixed");
-  const [mcqCount, setMcqCount] = useState<5 | 10 | 20>(10);
-  const [reverseConcept, setReverseConcept] = useState<string>("");
+type PersistedState = {
+  step: Step;
+  fileName: string;
+  documentText: string;
+  topics: string[];
+  selectedTopic: string;
+  selectedMode: ActivityKey | null;
+  mcqDifficulty: "easy" | "medium" | "hard" | "mixed";
+  mcqCount: 5 | 10 | 20;
+};
+
+function loadPersisted(): Partial<PersistedState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<PersistedState>;
+  } catch {
+    return {};
+  }
+}
+
+function LectureLab() {
+  const persisted = useMemo(() => loadPersisted(), []);
+  const [step, setStep] = useState<Step>(persisted.step ?? "upload");
+  const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
+  const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
+  const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
+  const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
+  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
+
+  const [mcqDifficulty, setMcqDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">(
+    persisted.mcqDifficulty ?? "mixed",
+  );
+  const [mcqCount, setMcqCount] = useState<5 | 10 | 20>(persisted.mcqCount ?? 10);
 
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
+
+  // Persist session state to localStorage so refreshes / remounts don't lose progress.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: PersistedState = {
+        step,
+        fileName,
+        documentText,
+        topics,
+        selectedTopic,
+        selectedMode,
+        mcqDifficulty,
+        mcqCount,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota / serialization errors are non-fatal */
+    }
+  }, [step, fileName, documentText, topics, selectedTopic, selectedMode, mcqDifficulty, mcqCount]);
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
@@ -148,6 +195,14 @@ function LectureLab() {
     setSelectedMode(null);
     setResult(null);
     setCacheMeta(null);
+    setGenerationError(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
