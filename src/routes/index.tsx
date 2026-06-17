@@ -1018,16 +1018,33 @@ function MCQView({ data }: { data: AnyObj }) {
               </ul>
               {submitted && (
                 <div className="mt-3 space-y-2">
-                  <p
-                    className={`text-sm font-semibold ${
-                      isRight ? "text-success" : "text-danger"
+                  <div
+                    className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+                      isRight ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
                     }`}
                   >
-                    {isRight ? "✓ Correct!" : `✗ Incorrect. The correct answer is: ${q.correct}`}
-                  </p>
+                    {isRight ? (
+                      <Check className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <X className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <span>
+                      {isRight
+                        ? "Correct!"
+                        : "Incorrect."}{" "}
+                      <span className="font-normal text-foreground">
+                        Correct answer: <span className="font-semibold">{q.correct}</span>
+                      </span>
+                    </span>
+                  </div>
                   {q.explanation && (
-                    <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">Why:</span> {q.explanation}
+                    <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground">
+                      <span className="font-semibold">Explanation:</span> {q.explanation}
+                    </p>
+                  )}
+                  {q.reference && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Reference:</span> {q.reference}
                     </p>
                   )}
                 </div>
