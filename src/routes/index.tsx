@@ -390,32 +390,38 @@ const STEPS: { key: Step; label: string }[] = [
 
 function Stepper({ step }: { step: Step }) {
   const idx = STEPS.findIndex((s) => s.key === step);
+  const current = STEPS[idx];
   return (
-    <ol className="no-print mb-8 flex items-center gap-2 overflow-x-auto py-2">
-      {STEPS.map((s, i) => {
-        const active = i === idx;
-        const done = i < idx;
-        return (
-          <li key={s.key} className="flex items-center gap-2">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition ${
-                done
-                  ? "bg-primary text-primary-foreground"
-                  : active
-                    ? "bg-accent text-accent-foreground ring-4 ring-accent/30"
-                    : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {done ? <Check className="h-4 w-4" /> : i + 1}
-            </div>
-            <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
-          </li>
-        );
-      })}
-    </ol>
+    <div className="no-print mb-8">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Step {idx + 1} of {STEPS.length} · {current?.label}
+      </p>
+      <ol className="flex items-center gap-2 overflow-x-auto py-2">
+        {STEPS.map((s, i) => {
+          const active = i === idx;
+          const done = i < idx;
+          return (
+            <li key={s.key} className="flex items-center gap-2">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition ${
+                  done
+                    ? "bg-primary text-primary-foreground"
+                    : active
+                      ? "bg-accent text-accent-foreground ring-4 ring-accent/30"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {done ? <Check className="h-4 w-4" /> : i + 1}
+              </div>
+              <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                {s.label}
+              </span>
+              {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
