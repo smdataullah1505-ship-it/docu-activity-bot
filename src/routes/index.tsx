@@ -1330,19 +1330,121 @@ function ThinkAnswerItem({
 function DebatesView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Debate Prompts">
-      <ul className="space-y-3">
+      <ul className="space-y-5">
         {data.map((d, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p className="font-semibold">{String(d.topic)}</p>
-            {d.context ? (
-              <RevealAnswer label="Show debate context">
-                <p className="text-sm text-muted-foreground">{String(d.context)}</p>
-              </RevealAnswer>
-            ) : null}
-          </li>
+          <DebateItem
+            key={i}
+            index={i}
+            topic={String(d.topic)}
+            context={d.context ? String(d.context) : ""}
+            argsFor={asArr<string>(d.argumentsFor).map(String)}
+            argsAgainst={asArr<string>(d.argumentsAgainst).map(String)}
+            keyPoints={asArr<string>(d.keyPoints).map(String)}
+            sampleArguments={d.sampleArguments ? String(d.sampleArguments) : ""}
+          />
         ))}
       </ul>
     </Section>
+  );
+}
+
+function DebateItem({
+  index,
+  topic,
+  context,
+  argsFor,
+  argsAgainst,
+  keyPoints,
+  sampleArguments,
+}: {
+  index: number;
+  topic: string;
+  context: string;
+  argsFor: string[];
+  argsAgainst: string[];
+  keyPoints: string[];
+  sampleArguments: string;
+}) {
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Debate #{index + 1}
+      </p>
+      <p className="mt-1 text-lg font-bold">{topic}</p>
+      {context && (
+        <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Context:</span> {context}
+        </p>
+      )}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-md border border-success/30 bg-success/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-success">Arguments FOR</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsFor.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsFor.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+        <div className="rounded-md border border-danger/30 bg-danger/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-danger">Arguments AGAINST</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsAgainst.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsAgainst.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+      </div>
+      {keyPoints.length > 0 && (
+        <div className="mt-3 rounded-md bg-accent/10 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-accent-foreground">
+            Key Points to Consider
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {keyPoints.map((k, j) => (
+              <li key={j}>{k}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Write your debate response or stance…"
+        disabled={submitted}
+        className="no-print mt-4 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!submitted ? (
+          <Button size="sm" onClick={() => setSubmitted(true)} disabled={!sampleArguments}>
+            <Eye className="mr-2 h-4 w-4" /> Show sample arguments
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {submitted && sampleArguments && (
+        <div className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-sm">
+          <p className="font-semibold text-primary">Sample Arguments:</p>
+          <p className="mt-1 text-foreground">{sampleArguments}</p>
+        </div>
+      )}
+    </li>
   );
 }
 
