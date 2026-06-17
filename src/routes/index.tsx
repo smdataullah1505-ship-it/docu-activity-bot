@@ -1545,7 +1545,8 @@ function FindMistakesView({ data }: { data: AnyObj[] }) {
             index={i}
             wrong={String(m.wrongStatement)}
             hint={m.hint ? String(m.hint) : ""}
-            correct={String(m.correctExplanation)}
+            correctStatement={m.correctStatement ? String(m.correctStatement) : ""}
+            explanation={String(m.correctExplanation ?? "")}
           />
         ))}
       </ol>
@@ -1553,19 +1554,42 @@ function FindMistakesView({ data }: { data: AnyObj[] }) {
   );
 }
 
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
+}
+
+function overlapScore(a: string, b: string): number {
+  const at = new Set(tokenize(a));
+  const bt = tokenize(b);
+  if (bt.length === 0 || at.size === 0) return 0;
+  const hits = bt.filter((w) => at.has(w)).length;
+  return hits / Math.max(bt.length, 1);
+}
+
 function FindMistakeItem({
   index,
   wrong,
   hint,
-  correct,
+  correctStatement,
+  explanation,
 }: {
   index: number;
   wrong: string;
   hint: string;
-  correct: string;
+  correctStatement: string;
+  explanation: string;
 }) {
   const [text, setText] = useState("");
   const [checked, setChecked] = useState(false);
+
+  const target = correctStatement || explanation;
+  const score = overlapScore(target, text);
+  const isCorrect = checked && score >= 0.35;
+
   return (
     <li className="rounded-lg border border-border p-4">
       <p className="font-medium text-danger">
@@ -1574,14 +1598,14 @@ function FindMistakeItem({
         {wrong}
       </p>
       {hint ? (
-        <p className="mt-2 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Hint:</span> {hint}
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
         </p>
       ) : null}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={2}
+        rows={3}
         placeholder="Write the corrected statement…"
         disabled={checked}
         className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -1589,7 +1613,7 @@ function FindMistakeItem({
       <div className="no-print mt-2">
         {!checked ? (
           <Button size="sm" onClick={() => setChecked(true)} disabled={!text.trim()}>
-            <Check className="mr-2 h-4 w-4" /> Check
+            <Check className="mr-2 h-4 w-4" /> Submit correction
           </Button>
         ) : (
           <Button
@@ -1605,9 +1629,37 @@ function FindMistakeItem({
         )}
       </div>
       {checked && (
-        <p className="mt-3 rounded-md bg-success/10 px-3 py-2 text-sm">
-          <span className="font-semibold text-success">Correct:</span> {correct}
-        </p>
+        <div className="mt-3 space-y-2">
+          <div
+            className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+              isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {isCorrect ? (
+              <Check className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <X className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {isCorrect
+                ? "Your correction matches the key idea from the document."
+                : "Not quite — your correction is missing the key ideas from the document."}
+            </span>
+          </div>
+          {correctStatement && (
+            <p className="rounded-md bg-success/10 px-3 py-2 text-sm">
+              <span className="font-semibold text-success">Correct statement:</span> {correctStatement}
+            </p>
+          )}
+          {explanation && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <span className="font-semibold">Why the original was wrong:</span> {explanation}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Match score: {Math.round(score * 100)}% keyword overlap with the document's correction.
+          </p>
+        </div>
       )}
     </li>
   );
