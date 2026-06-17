@@ -330,8 +330,6 @@ function LectureLab() {
             setMcqDifficulty={setMcqDifficulty}
             mcqCount={mcqCount}
             setMcqCount={setMcqCount}
-            reverseConcept={reverseConcept}
-            setReverseConcept={setReverseConcept}
             onRun={(m) => runGeneration(m, false)}
             onBack={() => setStep("topics")}
           />
@@ -342,6 +340,7 @@ function LectureLab() {
             topic={selectedTopic}
             mode={selectedMode}
             generating={generating}
+            error={generationError}
             result={result}
             cacheMeta={cacheMeta}
             onBack={() => setStep("activity")}
