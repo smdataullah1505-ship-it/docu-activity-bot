@@ -48,9 +48,8 @@ async function extractPptxText(file: File): Promise<string> {
 async function extractPdfText(file: File): Promise<string> {
   // Dynamic import to keep this client-only and load the worker lazily.
   const pdfjs = await import("pdfjs-dist");
-  // @ts-expect-error - worker URL import
-  const workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+  const workerMod: { default: string } = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+  pdfjs.GlobalWorkerOptions.workerSrc = workerMod.default;
 
   const ab = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: ab }).promise;
