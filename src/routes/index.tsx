@@ -207,13 +207,10 @@ function LectureLab() {
 
   const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
     if (!selectedTopic) return;
-    if (mode === "reverseQuestions" && !reverseConcept.trim()) {
-      toast.error("Enter a concept for reverse questioning first.");
-      return;
-    }
     try {
       setSelectedMode(mode);
       setGenerating(true);
+      setGenerationError(null);
       setResult(null);
       setCacheMeta(null);
       setStep("results");
@@ -248,7 +245,8 @@ function LectureLab() {
         options.count = mcqCount;
       }
       if (mode === "reverseQuestions") {
-        options.concept = reverseConcept.trim();
+        // Auto-use the selected topic as the concept — no separate input needed.
+        options.concept = selectedTopic;
       }
       const { json } = await generateActivityFn({
         data: { documentText, topic: selectedTopic, mode, options },
