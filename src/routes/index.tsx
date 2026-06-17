@@ -670,19 +670,11 @@ function ActivityStep({
             </div>
           </div>
 
-          <div className="mt-5">
-            <p className="text-sm font-medium">Reverse questioning concept</p>
-            <input
-              type="text"
-              value={reverseConcept}
-              onChange={(e) => setReverseConcept(e.target.value)}
-              placeholder="e.g. polymorphism"
-              className="mt-2 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Required only for the "Reverse Questioning" activity.
-            </p>
+          <div className="mt-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Reverse Questioning</span> automatically uses
+            your selected topic: <span className="italic">"{topic}"</span>.
           </div>
+
 
           {hovered && (
             <p className="mt-5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
