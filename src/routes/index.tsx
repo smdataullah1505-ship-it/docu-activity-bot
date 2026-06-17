@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -21,9 +21,12 @@ import {
   Check,
   X,
   FileType2,
+  Database,
+  Eye,
 } from "lucide-react";
 import { extractTopics, generateActivity } from "@/lib/activities.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
+import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
@@ -34,7 +37,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Upload PDF, DOCX, PPTX, or TXT lecture material. Generate quizzes, flashcards, debates, simulations, and more — grounded in your own content.",
+          "Upload PDF, DOCX, PPTX, or TXT lecture material. Generate interactive quizzes, flashcards, debates, simulations, and more — grounded in your own content.",
       },
     ],
   }),
@@ -73,6 +76,8 @@ const MODES: {
   { key: "findMistakes", title: "Find the Mistake", blurb: "Spot & correct errors", icon: AlertTriangle },
 ];
 
+type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
+
 function LectureLab() {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState<string>("");
@@ -89,6 +94,7 @@ function LectureLab() {
   const [extracting, setExtracting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
@@ -141,9 +147,10 @@ function LectureLab() {
     setSelectedTopic("");
     setSelectedMode(null);
     setResult(null);
+    setCacheMeta(null);
   };
 
-  const runGeneration = async (mode: ActivityKey) => {
+  const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
     if (!selectedTopic) return;
     if (mode === "reverseQuestions" && !reverseConcept.trim()) {
       toast.error("Enter a concept for reverse questioning first.");
@@ -153,7 +160,33 @@ function LectureLab() {
       setSelectedMode(mode);
       setGenerating(true);
       setResult(null);
+      setCacheMeta(null);
       setStep("results");
+
+      const difficulty = mode === "mcqs" ? mcqDifficulty : null;
+      const questionCount = mode === "mcqs" ? mcqCount : null;
+
+      // 1. Check cache first
+      if (!forceRegenerate) {
+        let q = supabase
+          .from("generated_activities")
+          .select("generated_json, created_at")
+          .eq("topic", selectedTopic)
+          .eq("activity_type", mode)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        q = difficulty ? q.eq("difficulty", difficulty) : q.is("difficulty", null);
+        q = questionCount ? q.eq("question_count", questionCount) : q.is("question_count", null);
+        const { data: cached } = await q;
+        if (cached && cached.length > 0) {
+          setResult(cached[0].generated_json as Record<string, unknown>);
+          setCacheMeta({ source: "cache", createdAt: cached[0].created_at });
+          setGenerating(false);
+          return;
+        }
+      }
+
+      // 2. Otherwise generate fresh
       const options: Record<string, unknown> = {};
       if (mode === "mcqs") {
         options.difficulty = mcqDifficulty;
@@ -166,7 +199,34 @@ function LectureLab() {
         data: { documentText, topic: selectedTopic, mode, options },
       });
       const parsed = JSON.parse(json);
+
+      // 3. Save to cache (best-effort)
+      const nowIso = new Date().toISOString();
+      try {
+        if (forceRegenerate) {
+          let del = supabase
+            .from("generated_activities")
+            .delete()
+            .eq("topic", selectedTopic)
+            .eq("activity_type", mode);
+          del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
+          del = questionCount ? del.eq("question_count", questionCount) : del.is("question_count", null);
+          await del;
+        }
+        await supabase.from("generated_activities").insert({
+          document_name: fileName,
+          topic: selectedTopic,
+          activity_type: mode,
+          difficulty,
+          question_count: questionCount,
+          generated_json: parsed,
+        });
+      } catch (e) {
+        console.warn("Cache save failed", e);
+      }
+
       setResult(parsed);
+      setCacheMeta({ source: "fresh", createdAt: nowIso });
       setGenerating(false);
     } catch (err) {
       setGenerating(false);
@@ -219,7 +279,7 @@ function LectureLab() {
             setMcqCount={setMcqCount}
             reverseConcept={reverseConcept}
             setReverseConcept={setReverseConcept}
-            onRun={runGeneration}
+            onRun={(m) => runGeneration(m, false)}
             onBack={() => setStep("topics")}
           />
         )}
@@ -230,8 +290,9 @@ function LectureLab() {
             mode={selectedMode}
             generating={generating}
             result={result}
+            cacheMeta={cacheMeta}
             onBack={() => setStep("activity")}
-            onRegenerate={() => selectedMode && runGeneration(selectedMode)}
+            onRegenerate={() => selectedMode && runGeneration(selectedMode, true)}
           />
         )}
       </main>
@@ -590,6 +651,7 @@ function ResultsStep({
   mode,
   generating,
   result,
+  cacheMeta,
   onBack,
   onRegenerate,
 }: {
@@ -597,6 +659,7 @@ function ResultsStep({
   mode: ActivityKey | null;
   generating: boolean;
   result: Record<string, unknown> | null;
+  cacheMeta: CacheMeta;
   onBack: () => void;
   onRegenerate: () => void;
 }) {
@@ -623,6 +686,27 @@ function ResultsStep({
         </div>
       </div>
 
+      {cacheMeta && !generating && (
+        <div
+          className={`no-print mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+            cacheMeta.source === "cache"
+              ? "bg-accent/30 text-accent-foreground"
+              : "bg-primary/15 text-primary"
+          }`}
+        >
+          {cacheMeta.source === "cache" ? (
+            <>
+              <Database className="h-3.5 w-3.5" /> 📦 Loaded from cache
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3.5 w-3.5" /> ✨ Newly generated
+            </>
+          )}
+          <span className="text-muted-foreground">· {new Date(cacheMeta.createdAt).toLocaleString()}</span>
+        </div>
+      )}
+
       {generating && (
         <div className="surface-card flex items-center gap-4 p-8">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -638,10 +722,13 @@ function ResultsStep({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="surface-card mb-5 p-6">
-      <h3 className="mb-4 text-lg font-bold">{title}</h3>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold">{title}</h3>
+        {right}
+      </div>
       {children}
     </div>
   );
@@ -681,6 +768,33 @@ function ResultRenderer({ mode, data, topic }: { mode: ActivityKey; data: AnyObj
   );
 }
 
+/* ---------- Reusable answer-reveal helpers ---------- */
+
+function RevealAnswer({
+  label = "Show answer",
+  children,
+}: {
+  label?: string;
+  children: React.ReactNode;
+}) {
+  const [shown, setShown] = useState(false);
+  if (!shown) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="no-print mt-3"
+        onClick={() => setShown(true)}
+      >
+        <Eye className="mr-2 h-4 w-4" /> {label}
+      </Button>
+    );
+  }
+  return <div className="mt-3">{children}</div>;
+}
+
+/* ---------- Quick Recap (interactive) ---------- */
+
 function QuickRecapView({ data }: { data: AnyObj }) {
   const keyPoints = asArr<string>(data.keyPoints);
   const concepts = asArr<{ concept: string; explanation: string }>(data.importantConcepts);
@@ -700,7 +814,9 @@ function QuickRecapView({ data }: { data: AnyObj }) {
           {concepts.map((c, i) => (
             <div key={i} className="rounded-lg border border-border bg-muted/30 p-4">
               <p className="font-semibold">{c.concept}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{c.explanation}</p>
+              <RevealAnswer label="Reveal explanation">
+                <p className="text-sm text-muted-foreground">{c.explanation}</p>
+              </RevealAnswer>
             </div>
           ))}
         </div>
@@ -713,9 +829,11 @@ function QuickRecapView({ data }: { data: AnyObj }) {
                 <span className="mr-2 text-muted-foreground">Q{i + 1}.</span>
                 {q.question}
               </p>
-              <p className="mt-1 text-sm text-success">
-                <span className="font-semibold">Answer:</span> {q.answer}
-              </p>
+              <RevealAnswer>
+                <p className="text-sm text-success">
+                  <span className="font-semibold">Answer:</span> {q.answer}
+                </p>
+              </RevealAnswer>
             </li>
           ))}
         </ol>
@@ -736,6 +854,8 @@ function QuickRecapView({ data }: { data: AnyObj }) {
   );
 }
 
+/* ---------- MCQ (interactive with score) ---------- */
+
 function difficultyColor(d: "easy" | "medium" | "hard"): string {
   if (d === "easy") return "bg-[oklch(0.92_0.1_145)] text-[oklch(0.3_0.12_145)]";
   if (d === "medium") return "bg-[oklch(0.92_0.12_70)] text-[oklch(0.35_0.15_55)]";
@@ -745,87 +865,226 @@ function difficultyColor(d: "easy" | "medium" | "hard"): string {
 type MCQ = { question: string; options: string[]; correct: string; explanation: string };
 
 function MCQView({ data }: { data: AnyObj }) {
-  const buckets: { key: "easy" | "medium" | "hard"; label: string; list: MCQ[] }[] = [
-    { key: "easy", label: "Easy", list: asArr<MCQ>(data.easy) },
-    { key: "medium", label: "Medium", list: asArr<MCQ>(data.medium) },
-    { key: "hard", label: "Hard", list: asArr<MCQ>(data.hard) },
-  ];
-  return (
-    <>
-      {buckets.map(
-        (b) =>
-          b.list.length > 0 && (
-            <Section key={b.key} title={`${b.label} (${b.list.length})`}>
-              <ol className="space-y-4">
-                {b.list.map((q, i) => (
-                  <li key={i} className="rounded-lg border border-border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${difficultyColor(b.key)}`}
-                      >
-                        {b.label}
-                      </span>
-                      <span className="text-xs text-muted-foreground">Q{i + 1}</span>
-                    </div>
-                    <p className="font-medium">{q.question}</p>
-                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {q.options?.map((opt, j) => {
-                        const isCorrect = opt === q.correct;
-                        return (
-                          <li
-                            key={j}
-                            className={`rounded-md border px-3 py-2 text-sm ${
-                              isCorrect
-                                ? "border-success bg-success/10 font-medium"
-                                : "border-border"
-                            }`}
-                          >
-                            <span className="mr-2 text-muted-foreground">
-                              {String.fromCharCode(65 + j)}.
-                            </span>
-                            {opt}
-                            {isCorrect && <Check className="ml-2 inline h-4 w-4 text-success" />}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {q.explanation && (
-                      <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground">Why:</span> {q.explanation}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            </Section>
-          ),
-      )}
-    </>
-  );
-}
+  const all = useMemo(() => {
+    const items: { q: MCQ; diff: "easy" | "medium" | "hard"; idx: number }[] = [];
+    (["easy", "medium", "hard"] as const).forEach((diff) => {
+      asArr<MCQ>(data[diff]).forEach((q, i) => items.push({ q, diff, idx: i }));
+    });
+    return items;
+  }, [data]);
 
-function FillBlanksView({ data }: { data: AnyObj[] }) {
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  if (all.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        No MCQs were generated for this topic.
+      </div>
+    );
+  }
+
+  const score = all.reduce(
+    (acc, { q }, i) => acc + (submitted && answers[i] === q.correct ? 1 : 0),
+    0,
+  );
+  const allAnswered = all.every((_, i) => answers[i] != null);
+
   return (
-    <Section title="Fill in the Blanks">
-      <ol className="space-y-3">
-        {data.map((q, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p>
-              <span className="mr-2 text-muted-foreground">{i + 1}.</span>
-              {String(q.sentence)}
-            </p>
-            <p className="mt-2 text-sm">
-              <span className="font-semibold text-success">Answer:</span> {String(q.answer)}
-            </p>
-            {q.explanation ? (
-              <p className="mt-1 text-xs text-muted-foreground">{String(q.explanation)}</p>
-            ) : null}
-          </li>
-        ))}
+    <Section
+      title={`MCQs (${all.length})`}
+      right={
+        submitted ? (
+          <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+            Score: {score} / {all.length}
+          </span>
+        ) : null
+      }
+    >
+      <ol className="space-y-4">
+        {all.map(({ q, diff }, i) => {
+          const picked = answers[i];
+          const isRight = picked === q.correct;
+          return (
+            <li key={i} className="rounded-lg border border-border p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${difficultyColor(diff)}`}>
+                  {diff}
+                </span>
+                <span className="text-xs text-muted-foreground">Q{i + 1}</span>
+              </div>
+              <p className="font-medium">{q.question}</p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {q.options?.map((opt, j) => {
+                  const selected = picked === opt;
+                  const showCorrect = submitted && opt === q.correct;
+                  const showWrong = submitted && selected && opt !== q.correct;
+                  return (
+                    <li key={j}>
+                      <button
+                        type="button"
+                        disabled={submitted}
+                        onClick={() => setAnswers((a) => ({ ...a, [i]: opt }))}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                          showCorrect
+                            ? "border-success bg-success/10 font-medium"
+                            : showWrong
+                              ? "border-danger bg-danger/10"
+                              : selected
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-primary/50"
+                        } ${submitted ? "cursor-default" : "cursor-pointer"}`}
+                      >
+                        <span className="mr-2 text-muted-foreground">{String.fromCharCode(65 + j)}.</span>
+                        {opt}
+                        {showCorrect && <Check className="ml-2 inline h-4 w-4 text-success" />}
+                        {showWrong && <X className="ml-2 inline h-4 w-4 text-danger" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {submitted && (
+                <div className="mt-3 space-y-2">
+                  <p
+                    className={`text-sm font-semibold ${
+                      isRight ? "text-success" : "text-danger"
+                    }`}
+                  >
+                    {isRight ? "✓ Correct!" : `✗ Incorrect. The correct answer is: ${q.correct}`}
+                  </p>
+                  {q.explanation && (
+                    <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">Why:</span> {q.explanation}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ol>
+
+      <div className="no-print mt-5 flex flex-wrap items-center gap-3">
+        {!submitted ? (
+          <Button onClick={() => setSubmitted(true)} disabled={!allAnswered}>
+            <Check className="mr-2 h-4 w-4" /> Submit answers
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setAnswers({});
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+        {!submitted && !allAnswered && (
+          <span className="text-sm text-muted-foreground">
+            Answer all {all.length} questions to submit.
+          </span>
+        )}
+      </div>
     </Section>
   );
 }
+
+/* ---------- Fill in the Blanks (interactive) ---------- */
+
+function FillBlanksView({ data }: { data: AnyObj[] }) {
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [checked, setChecked] = useState(false);
+
+  if (data.length === 0) {
+    return <div className="surface-card p-6 text-center text-muted-foreground">No items generated.</div>;
+  }
+
+  const norm = (s: string) => s.trim().toLowerCase();
+  const score = data.reduce(
+    (acc, q, i) => acc + (checked && norm(answers[i] || "") === norm(String(q.answer)) ? 1 : 0),
+    0,
+  );
+
+  return (
+    <Section
+      title="Fill in the Blanks"
+      right={
+        checked ? (
+          <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+            Score: {score} / {data.length}
+          </span>
+        ) : null
+      }
+    >
+      <ol className="space-y-3">
+        {data.map((q, i) => {
+          const parts = String(q.sentence).split(/_{2,}/);
+          const ans = answers[i] || "";
+          const correct = checked && norm(ans) === norm(String(q.answer));
+          return (
+            <li key={i} className="rounded-lg border border-border p-4">
+              <p className="flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="mr-1 text-muted-foreground">{i + 1}.</span>
+                {parts.map((p, idx) => (
+                  <span key={idx} className="contents">
+                    <span>{p}</span>
+                    {idx < parts.length - 1 && (
+                      <input
+                        type="text"
+                        value={ans}
+                        disabled={checked}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [i]: e.target.value }))}
+                        className={`mx-1 inline-block min-w-[8rem] rounded border px-2 py-0.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 ${
+                          checked
+                            ? correct
+                              ? "border-success bg-success/10"
+                              : "border-danger bg-danger/10"
+                            : "border-input bg-card"
+                        }`}
+                        placeholder="answer"
+                      />
+                    )}
+                  </span>
+                ))}
+              </p>
+              {checked && (
+                <div className="mt-2 space-y-1">
+                  <p className={`text-sm font-semibold ${correct ? "text-success" : "text-danger"}`}>
+                    {correct ? "✓ Correct" : `✗ Correct answer: ${String(q.answer)}`}
+                  </p>
+                  {q.explanation ? (
+                    <p className="text-xs text-muted-foreground">{String(q.explanation)}</p>
+                  ) : null}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <div className="no-print mt-5">
+        {!checked ? (
+          <Button onClick={() => setChecked(true)}>
+            <Check className="mr-2 h-4 w-4" /> Check answers
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setChecked(false);
+              setAnswers({});
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+/* ---------- Flashcards (already interactive) ---------- */
 
 function FlashcardsView({ data }: { data: AnyObj[] }) {
   return (
@@ -857,27 +1116,62 @@ function Flashcard({ front, back }: { front: string; back: string }) {
   );
 }
 
+/* ---------- Socratic (answer hidden by default) ---------- */
+
 function SocraticView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Socratic Questions">
       <ol className="space-y-3">
         {data.map((q, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p className="font-medium">
-              <span className="mr-2 text-muted-foreground">Q{i + 1}.</span>
-              {String(q.question)}
-            </p>
-            {q.hint ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">Hint:</span> {String(q.hint)}
-              </p>
-            ) : null}
-          </li>
+          <ThinkAnswerItem
+            key={i}
+            index={i}
+            prompt={String(q.question)}
+            reveal={
+              q.hint ? (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">Hint / direction:</span> {String(q.hint)}
+                </p>
+              ) : null
+            }
+          />
         ))}
       </ol>
     </Section>
   );
 }
+
+function ThinkAnswerItem({
+  index,
+  prompt,
+  reveal,
+  placeholder = "Type your thinking…",
+}: {
+  index: number;
+  prompt: string;
+  reveal: React.ReactNode;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState("");
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {prompt}
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        placeholder={placeholder}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      {reveal && <RevealAnswer label="Show ideal answer">{reveal}</RevealAnswer>}
+    </li>
+  );
+}
+
+/* ---------- Debates ---------- */
 
 function DebatesView({ data }: { data: AnyObj[] }) {
   return (
@@ -887,7 +1181,9 @@ function DebatesView({ data }: { data: AnyObj[] }) {
           <li key={i} className="rounded-lg border border-border p-4">
             <p className="font-semibold">{String(d.topic)}</p>
             {d.context ? (
-              <p className="mt-1 text-sm text-muted-foreground">{String(d.context)}</p>
+              <RevealAnswer label="Show debate context">
+                <p className="text-sm text-muted-foreground">{String(d.context)}</p>
+              </RevealAnswer>
             ) : null}
           </li>
         ))}
@@ -895,6 +1191,8 @@ function DebatesView({ data }: { data: AnyObj[] }) {
     </Section>
   );
 }
+
+/* ---------- Workshops ---------- */
 
 function WorkshopsView({ data }: { data: AnyObj[] }) {
   return (
@@ -921,7 +1219,9 @@ function WorkshopsView({ data }: { data: AnyObj[] }) {
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Expected outcome
                   </p>
-                  <p className="mt-1 text-sm">{String(w.outcome)}</p>
+                  <RevealAnswer label="Reveal expected outcome">
+                    <p className="text-sm">{String(w.outcome)}</p>
+                  </RevealAnswer>
                 </div>
               </div>
             </div>
@@ -932,6 +1232,8 @@ function WorkshopsView({ data }: { data: AnyObj[] }) {
   );
 }
 
+/* ---------- Examples ---------- */
+
 function ExamplesView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Real-World Examples">
@@ -939,10 +1241,12 @@ function ExamplesView({ data }: { data: AnyObj[] }) {
         {data.map((e, i) => (
           <div key={i} className="rounded-lg border border-border p-4">
             <p className="font-semibold">{String(e.scenario)}</p>
-            <p className="mt-2 text-sm">{String(e.explanation)}</p>
-            <p className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Where used:</span> {String(e.application)}
-            </p>
+            <RevealAnswer label="Show explanation & application">
+              <p className="text-sm">{String(e.explanation)}</p>
+              <p className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Where used:</span> {String(e.application)}
+              </p>
+            </RevealAnswer>
           </div>
         ))}
       </div>
@@ -950,47 +1254,105 @@ function ExamplesView({ data }: { data: AnyObj[] }) {
   );
 }
 
+/* ---------- Reverse Questions ---------- */
+
 function ReverseView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Reverse Questions">
       <ol className="space-y-3">
         {data.map((q, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p className="font-medium">
-              <span className="mr-2 text-muted-foreground">Q{i + 1}.</span>
-              {String(q.question)}
-            </p>
-            {q.context ? (
-              <p className="mt-1 text-xs text-muted-foreground">{String(q.context)}</p>
-            ) : null}
-          </li>
+          <ThinkAnswerItem
+            key={i}
+            index={i}
+            prompt={String(q.question)}
+            reveal={
+              q.context ? (
+                <p className="text-xs text-muted-foreground">{String(q.context)}</p>
+              ) : null
+            }
+          />
         ))}
       </ol>
     </Section>
   );
 }
 
+/* ---------- Find the Mistake (interactive) ---------- */
+
 function FindMistakesView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Find the Mistake">
       <ol className="space-y-3">
         {data.map((m, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p className="font-medium text-danger">
-              <FileText className="mr-1 inline h-4 w-4" />
-              {String(m.wrongStatement)}
-            </p>
-            {m.hint ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">Hint:</span> {String(m.hint)}
-              </p>
-            ) : null}
-            <p className="mt-2 rounded-md bg-success/10 px-3 py-2 text-sm">
-              <span className="font-semibold text-success">Correct:</span> {String(m.correctExplanation)}
-            </p>
-          </li>
+          <FindMistakeItem
+            key={i}
+            index={i}
+            wrong={String(m.wrongStatement)}
+            hint={m.hint ? String(m.hint) : ""}
+            correct={String(m.correctExplanation)}
+          />
         ))}
       </ol>
     </Section>
+  );
+}
+
+function FindMistakeItem({
+  index,
+  wrong,
+  hint,
+  correct,
+}: {
+  index: number;
+  wrong: string;
+  hint: string;
+  correct: string;
+}) {
+  const [text, setText] = useState("");
+  const [checked, setChecked] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium text-danger">
+        <FileText className="mr-1 inline h-4 w-4" />
+        <span className="mr-2 text-muted-foreground">#{index + 1}</span>
+        {wrong}
+      </p>
+      {hint ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Hint:</span> {hint}
+        </p>
+      ) : null}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        placeholder="Write the corrected statement…"
+        disabled={checked}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2">
+        {!checked ? (
+          <Button size="sm" onClick={() => setChecked(true)} disabled={!text.trim()}>
+            <Check className="mr-2 h-4 w-4" /> Check
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setChecked(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {checked && (
+        <p className="mt-3 rounded-md bg-success/10 px-3 py-2 text-sm">
+          <span className="font-semibold text-success">Correct:</span> {correct}
+        </p>
+      )}
+    </li>
   );
 }
