@@ -52,15 +52,15 @@ const ActivityInput = z.object({
 
 const MODE_INSTRUCTIONS: Record<string, string> = {
   quickRecap: `Generate a "quickRecap" object with: keyPoints (3-5 strings), importantConcepts (array of {concept, explanation}), oralQuestions (5 items of {question, answer}), memoryTriggers (array of strings - mnemonics).`,
-  mcqs: `Generate an "mcqs" object with keys easy, medium, hard each containing an array of {question, options (4 strings), correct (the correct option string), explanation}. Distribute the requested count across difficulties (or use the requested single difficulty only - leave others as empty arrays). Easy = basic recall, Medium = application/understanding, Hard = analysis/evaluation. No repetition across difficulties.`,
+  mcqs: `Generate an "mcqs" object with keys easy, medium, hard each containing an array of {question, options (4 strings), correct (the correct option string), explanation (a thorough 2-3 sentence explanation grounded in the document), reference (optional - e.g. "Slide 5" / "Section 2" if identifiable from the source, else empty string)}. Distribute the requested count across difficulties (or use the requested single difficulty only - leave others as empty arrays). Easy = basic recall, Medium = application/understanding, Hard = analysis/evaluation. No repetition across difficulties.`,
   fillBlanks: `Generate "fillBlanks" array of 5-8 items {sentence (use ___ for blank), answer, explanation}, based on important terminology.`,
   flashcards: `Generate "flashcards" array of 5-10 items {front (term), back (simple explanation)}.`,
-  socraticQuestions: `Generate "socraticQuestions" array of 5-7 thinking questions {question, hint}. Focus on why/how/reasoning/comparison, NOT direct recall.`,
-  debates: `Generate "debates" array of 5 items {topic, context}. Encourage opinions and technical reasoning.`,
+  socraticQuestions: `Generate "socraticQuestions" array of 5-7 thinking questions {question, hint, idealAnswer (a thorough 3-5 sentence model answer based ONLY on the document)}. Focus on why/how/reasoning/comparison, NOT direct recall.`,
+  debates: `Generate "debates" array of 4-5 items {topic (a debatable statement), context (1-2 sentences from the document), argumentsFor (array of 3 strings - points supporting the statement, from the document), argumentsAgainst (array of 3 strings - points opposing the statement, from the document), keyPoints (array of 2-3 strings of additional considerations from the document), sampleArguments (a 3-5 sentence balanced sample student response)}.`,
   workshops: `Generate "workshops" array of 2-3 items {title, instructions (step-by-step string), task, outcome}. Must be possible inside a classroom in 10-15 min.`,
   examples: `Generate "examples" array of 3-5 items {scenario, explanation, application} connecting the topic with real applications.`,
-  reverseQuestions: `Given the provided concept, generate "reverseQuestions" array of 5-8 items {question, context} - questions students might ask about the concept.`,
-  findMistakes: `Generate "findMistakes" array of 3-5 items {wrongStatement (intentionally incorrect statement based on the document), hint, correctExplanation}.`,
+  reverseQuestions: `Generate "reverseQuestions" array of 5-8 items {question, context (1-2 sentences answering the question from the document)} - questions students are likely to ask about the selected topic.`,
+  findMistakes: `Generate "findMistakes" array of 3-5 items {wrongStatement (intentionally incorrect statement based on the document), hint, correctStatement (the corrected statement in 1-2 sentences), correctExplanation (2-3 sentences explaining why the original was wrong, from the document)}.`,
 };
 
 export const generateActivity = createServerFn({ method: "POST" })

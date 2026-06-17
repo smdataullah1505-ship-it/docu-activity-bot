@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -78,23 +78,70 @@ const MODES: {
 
 type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
 
-function LectureLab() {
-  const [step, setStep] = useState<Step>("upload");
-  const [fileName, setFileName] = useState<string>("");
-  const [documentText, setDocumentText] = useState<string>("");
-  const [topics, setTopics] = useState<string[]>([]);
-  const [selectedTopic, setSelectedTopic] = useState<string>("");
-  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(null);
+const STORAGE_KEY = "lecturelab.session.v2";
 
-  const [mcqDifficulty, setMcqDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("mixed");
-  const [mcqCount, setMcqCount] = useState<5 | 10 | 20>(10);
-  const [reverseConcept, setReverseConcept] = useState<string>("");
+type PersistedState = {
+  step: Step;
+  fileName: string;
+  documentText: string;
+  topics: string[];
+  selectedTopic: string;
+  selectedMode: ActivityKey | null;
+  mcqDifficulty: "easy" | "medium" | "hard" | "mixed";
+  mcqCount: 5 | 10 | 20;
+};
+
+function loadPersisted(): Partial<PersistedState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<PersistedState>;
+  } catch {
+    return {};
+  }
+}
+
+function LectureLab() {
+  const persisted = useMemo(() => loadPersisted(), []);
+  const [step, setStep] = useState<Step>(persisted.step ?? "upload");
+  const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
+  const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
+  const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
+  const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
+  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
+
+  const [mcqDifficulty, setMcqDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">(
+    persisted.mcqDifficulty ?? "mixed",
+  );
+  const [mcqCount, setMcqCount] = useState<5 | 10 | 20>(persisted.mcqCount ?? 10);
 
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
+
+  // Persist session state to localStorage so refreshes / remounts don't lose progress.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: PersistedState = {
+        step,
+        fileName,
+        documentText,
+        topics,
+        selectedTopic,
+        selectedMode,
+        mcqDifficulty,
+        mcqCount,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota / serialization errors are non-fatal */
+    }
+  }, [step, fileName, documentText, topics, selectedTopic, selectedMode, mcqDifficulty, mcqCount]);
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
@@ -148,17 +195,22 @@ function LectureLab() {
     setSelectedMode(null);
     setResult(null);
     setCacheMeta(null);
+    setGenerationError(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
     if (!selectedTopic) return;
-    if (mode === "reverseQuestions" && !reverseConcept.trim()) {
-      toast.error("Enter a concept for reverse questioning first.");
-      return;
-    }
     try {
       setSelectedMode(mode);
       setGenerating(true);
+      setGenerationError(null);
       setResult(null);
       setCacheMeta(null);
       setStep("results");
@@ -193,7 +245,8 @@ function LectureLab() {
         options.count = mcqCount;
       }
       if (mode === "reverseQuestions") {
-        options.concept = reverseConcept.trim();
+        // Auto-use the selected topic as the concept — no separate input needed.
+        options.concept = selectedTopic;
       }
       const { json } = await generateActivityFn({
         data: { documentText, topic: selectedTopic, mode, options },
@@ -231,6 +284,7 @@ function LectureLab() {
     } catch (err) {
       setGenerating(false);
       const msg = err instanceof Error ? err.message : "Generation failed.";
+      setGenerationError(msg);
       toast.error(msg);
     }
   };
@@ -277,8 +331,6 @@ function LectureLab() {
             setMcqDifficulty={setMcqDifficulty}
             mcqCount={mcqCount}
             setMcqCount={setMcqCount}
-            reverseConcept={reverseConcept}
-            setReverseConcept={setReverseConcept}
             onRun={(m) => runGeneration(m, false)}
             onBack={() => setStep("topics")}
           />
@@ -289,6 +341,7 @@ function LectureLab() {
             topic={selectedTopic}
             mode={selectedMode}
             generating={generating}
+            error={generationError}
             result={result}
             cacheMeta={cacheMeta}
             onBack={() => setStep("activity")}
@@ -337,32 +390,38 @@ const STEPS: { key: Step; label: string }[] = [
 
 function Stepper({ step }: { step: Step }) {
   const idx = STEPS.findIndex((s) => s.key === step);
+  const current = STEPS[idx];
   return (
-    <ol className="no-print mb-8 flex items-center gap-2 overflow-x-auto py-2">
-      {STEPS.map((s, i) => {
-        const active = i === idx;
-        const done = i < idx;
-        return (
-          <li key={s.key} className="flex items-center gap-2">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition ${
-                done
-                  ? "bg-primary text-primary-foreground"
-                  : active
-                    ? "bg-accent text-accent-foreground ring-4 ring-accent/30"
-                    : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {done ? <Check className="h-4 w-4" /> : i + 1}
-            </div>
-            <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>
-              {s.label}
-            </span>
-            {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
-          </li>
-        );
-      })}
-    </ol>
+    <div className="no-print mb-8">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Step {idx + 1} of {STEPS.length} · {current?.label}
+      </p>
+      <ol className="flex items-center gap-2 overflow-x-auto py-2">
+        {STEPS.map((s, i) => {
+          const active = i === idx;
+          const done = i < idx;
+          return (
+            <li key={s.key} className="flex items-center gap-2">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition ${
+                  done
+                    ? "bg-primary text-primary-foreground"
+                    : active
+                      ? "bg-accent text-accent-foreground ring-4 ring-accent/30"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {done ? <Check className="h-4 w-4" /> : i + 1}
+              </div>
+              <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                {s.label}
+              </span>
+              {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -531,8 +590,6 @@ function ActivityStep({
   setMcqDifficulty,
   mcqCount,
   setMcqCount,
-  reverseConcept,
-  setReverseConcept,
   onRun,
   onBack,
 }: {
@@ -541,8 +598,6 @@ function ActivityStep({
   setMcqDifficulty: (v: "easy" | "medium" | "hard" | "mixed") => void;
   mcqCount: 5 | 10 | 20;
   setMcqCount: (v: 5 | 10 | 20) => void;
-  reverseConcept: string;
-  setReverseConcept: (v: string) => void;
   onRun: (mode: ActivityKey) => void;
   onBack: () => void;
 }) {
@@ -621,19 +676,11 @@ function ActivityStep({
             </div>
           </div>
 
-          <div className="mt-5">
-            <p className="text-sm font-medium">Reverse questioning concept</p>
-            <input
-              type="text"
-              value={reverseConcept}
-              onChange={(e) => setReverseConcept(e.target.value)}
-              placeholder="e.g. polymorphism"
-              className="mt-2 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Required only for the "Reverse Questioning" activity.
-            </p>
+          <div className="mt-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Reverse Questioning</span> automatically uses
+            your selected topic: <span className="italic">"{topic}"</span>.
           </div>
+
 
           {hovered && (
             <p className="mt-5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -650,6 +697,7 @@ function ResultsStep({
   topic,
   mode,
   generating,
+  error,
   result,
   cacheMeta,
   onBack,
@@ -658,6 +706,7 @@ function ResultsStep({
   topic: string;
   mode: ActivityKey | null;
   generating: boolean;
+  error: string | null;
   result: Record<string, unknown> | null;
   cacheMeta: CacheMeta;
   onBack: () => void;
@@ -686,7 +735,7 @@ function ResultsStep({
         </div>
       </div>
 
-      {cacheMeta && !generating && (
+      {cacheMeta && !generating && !error && (
         <div
           className={`no-print mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
             cacheMeta.source === "cache"
@@ -717,7 +766,24 @@ function ResultsStep({
         </div>
       )}
 
-      {!generating && result && mode && <ResultRenderer mode={mode} data={result} topic={topic} />}
+      {!generating && error && (
+        <div className="surface-card border border-danger/40 bg-danger/5 p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-danger" />
+            <div className="flex-1">
+              <p className="font-semibold text-danger">Generation failed</p>
+              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              <Button className="mt-4" onClick={onRegenerate}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!generating && !error && result && mode && (
+        <ResultRenderer mode={mode} data={result} topic={topic} />
+      )}
     </section>
   );
 }
@@ -862,7 +928,13 @@ function difficultyColor(d: "easy" | "medium" | "hard"): string {
   return "bg-[oklch(0.92_0.1_25)] text-[oklch(0.4_0.18_25)]";
 }
 
-type MCQ = { question: string; options: string[]; correct: string; explanation: string };
+type MCQ = {
+  question: string;
+  options: string[];
+  correct: string;
+  explanation: string;
+  reference?: string;
+};
 
 function MCQView({ data }: { data: AnyObj }) {
   const all = useMemo(() => {
@@ -946,16 +1018,33 @@ function MCQView({ data }: { data: AnyObj }) {
               </ul>
               {submitted && (
                 <div className="mt-3 space-y-2">
-                  <p
-                    className={`text-sm font-semibold ${
-                      isRight ? "text-success" : "text-danger"
+                  <div
+                    className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+                      isRight ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
                     }`}
                   >
-                    {isRight ? "✓ Correct!" : `✗ Incorrect. The correct answer is: ${q.correct}`}
-                  </p>
+                    {isRight ? (
+                      <Check className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <X className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <span>
+                      {isRight
+                        ? "Correct!"
+                        : "Incorrect."}{" "}
+                      <span className="font-normal text-foreground">
+                        Correct answer: <span className="font-semibold">{q.correct}</span>
+                      </span>
+                    </span>
+                  </div>
                   {q.explanation && (
-                    <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">Why:</span> {q.explanation}
+                    <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground">
+                      <span className="font-semibold">Explanation:</span> {q.explanation}
+                    </p>
+                  )}
+                  {q.reference && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Reference:</span> {q.reference}
                     </p>
                   )}
                 </div>
@@ -1121,23 +1210,88 @@ function Flashcard({ front, back }: { front: string; back: string }) {
 function SocraticView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Socratic Questions">
-      <ol className="space-y-3">
+      <ol className="space-y-4">
         {data.map((q, i) => (
-          <ThinkAnswerItem
+          <SocraticItem
             key={i}
             index={i}
-            prompt={String(q.question)}
-            reveal={
-              q.hint ? (
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-semibold text-foreground">Hint / direction:</span> {String(q.hint)}
-                </p>
-              ) : null
-            }
+            question={String(q.question)}
+            hint={q.hint ? String(q.hint) : ""}
+            idealAnswer={q.idealAnswer ? String(q.idealAnswer) : ""}
           />
         ))}
       </ol>
     </Section>
+  );
+}
+
+function SocraticItem({
+  index,
+  question,
+  hint,
+  idealAnswer,
+}: {
+  index: number;
+  question: string;
+  hint: string;
+  idealAnswer: string;
+}) {
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {question}
+      </p>
+      {hint ? (
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
+        </p>
+      ) : null}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Type your answer here…"
+        disabled={shown}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!shown ? (
+          <Button size="sm" onClick={() => setShown(true)} disabled={!idealAnswer}>
+            <Eye className="mr-2 h-4 w-4" /> Show answer
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setShown(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {shown && idealAnswer && (
+        <div className="mt-3 space-y-2">
+          {text.trim() && (
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Your answer
+              </p>
+              <p className="mt-1 whitespace-pre-line">{text}</p>
+            </div>
+          )}
+          <div className="rounded-md bg-success/10 px-3 py-2 text-sm">
+            <p className="font-semibold text-success">Ideal answer from the document:</p>
+            <p className="mt-1 text-foreground">{idealAnswer}</p>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -1176,19 +1330,121 @@ function ThinkAnswerItem({
 function DebatesView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Debate Prompts">
-      <ul className="space-y-3">
+      <ul className="space-y-5">
         {data.map((d, i) => (
-          <li key={i} className="rounded-lg border border-border p-4">
-            <p className="font-semibold">{String(d.topic)}</p>
-            {d.context ? (
-              <RevealAnswer label="Show debate context">
-                <p className="text-sm text-muted-foreground">{String(d.context)}</p>
-              </RevealAnswer>
-            ) : null}
-          </li>
+          <DebateItem
+            key={i}
+            index={i}
+            topic={String(d.topic)}
+            context={d.context ? String(d.context) : ""}
+            argsFor={asArr<string>(d.argumentsFor).map(String)}
+            argsAgainst={asArr<string>(d.argumentsAgainst).map(String)}
+            keyPoints={asArr<string>(d.keyPoints).map(String)}
+            sampleArguments={d.sampleArguments ? String(d.sampleArguments) : ""}
+          />
         ))}
       </ul>
     </Section>
+  );
+}
+
+function DebateItem({
+  index,
+  topic,
+  context,
+  argsFor,
+  argsAgainst,
+  keyPoints,
+  sampleArguments,
+}: {
+  index: number;
+  topic: string;
+  context: string;
+  argsFor: string[];
+  argsAgainst: string[];
+  keyPoints: string[];
+  sampleArguments: string;
+}) {
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Debate #{index + 1}
+      </p>
+      <p className="mt-1 text-lg font-bold">{topic}</p>
+      {context && (
+        <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Context:</span> {context}
+        </p>
+      )}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-md border border-success/30 bg-success/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-success">Arguments FOR</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsFor.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsFor.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+        <div className="rounded-md border border-danger/30 bg-danger/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-danger">Arguments AGAINST</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsAgainst.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsAgainst.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+      </div>
+      {keyPoints.length > 0 && (
+        <div className="mt-3 rounded-md bg-accent/10 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-accent-foreground">
+            Key Points to Consider
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {keyPoints.map((k, j) => (
+              <li key={j}>{k}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Write your debate response or stance…"
+        disabled={submitted}
+        className="no-print mt-4 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!submitted ? (
+          <Button size="sm" onClick={() => setSubmitted(true)} disabled={!sampleArguments}>
+            <Eye className="mr-2 h-4 w-4" /> Show sample arguments
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {submitted && sampleArguments && (
+        <div className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-sm">
+          <p className="font-semibold text-primary">Sample Arguments:</p>
+          <p className="mt-1 text-foreground">{sampleArguments}</p>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -1289,7 +1545,8 @@ function FindMistakesView({ data }: { data: AnyObj[] }) {
             index={i}
             wrong={String(m.wrongStatement)}
             hint={m.hint ? String(m.hint) : ""}
-            correct={String(m.correctExplanation)}
+            correctStatement={m.correctStatement ? String(m.correctStatement) : ""}
+            explanation={String(m.correctExplanation ?? "")}
           />
         ))}
       </ol>
@@ -1297,19 +1554,42 @@ function FindMistakesView({ data }: { data: AnyObj[] }) {
   );
 }
 
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
+}
+
+function overlapScore(a: string, b: string): number {
+  const at = new Set(tokenize(a));
+  const bt = tokenize(b);
+  if (bt.length === 0 || at.size === 0) return 0;
+  const hits = bt.filter((w) => at.has(w)).length;
+  return hits / Math.max(bt.length, 1);
+}
+
 function FindMistakeItem({
   index,
   wrong,
   hint,
-  correct,
+  correctStatement,
+  explanation,
 }: {
   index: number;
   wrong: string;
   hint: string;
-  correct: string;
+  correctStatement: string;
+  explanation: string;
 }) {
   const [text, setText] = useState("");
   const [checked, setChecked] = useState(false);
+
+  const target = correctStatement || explanation;
+  const score = overlapScore(target, text);
+  const isCorrect = checked && score >= 0.35;
+
   return (
     <li className="rounded-lg border border-border p-4">
       <p className="font-medium text-danger">
@@ -1318,14 +1598,14 @@ function FindMistakeItem({
         {wrong}
       </p>
       {hint ? (
-        <p className="mt-2 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Hint:</span> {hint}
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
         </p>
       ) : null}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={2}
+        rows={3}
         placeholder="Write the corrected statement…"
         disabled={checked}
         className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -1333,7 +1613,7 @@ function FindMistakeItem({
       <div className="no-print mt-2">
         {!checked ? (
           <Button size="sm" onClick={() => setChecked(true)} disabled={!text.trim()}>
-            <Check className="mr-2 h-4 w-4" /> Check
+            <Check className="mr-2 h-4 w-4" /> Submit correction
           </Button>
         ) : (
           <Button
@@ -1349,9 +1629,37 @@ function FindMistakeItem({
         )}
       </div>
       {checked && (
-        <p className="mt-3 rounded-md bg-success/10 px-3 py-2 text-sm">
-          <span className="font-semibold text-success">Correct:</span> {correct}
-        </p>
+        <div className="mt-3 space-y-2">
+          <div
+            className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+              isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {isCorrect ? (
+              <Check className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <X className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {isCorrect
+                ? "Your correction matches the key idea from the document."
+                : "Not quite — your correction is missing the key ideas from the document."}
+            </span>
+          </div>
+          {correctStatement && (
+            <p className="rounded-md bg-success/10 px-3 py-2 text-sm">
+              <span className="font-semibold text-success">Correct statement:</span> {correctStatement}
+            </p>
+          )}
+          {explanation && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <span className="font-semibold">Why the original was wrong:</span> {explanation}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Match score: {Math.round(score * 100)}% keyword overlap with the document's correction.
+          </p>
+        </div>
       )}
     </li>
   );
