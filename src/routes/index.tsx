@@ -284,6 +284,7 @@ function LectureLab() {
     } catch (err) {
       setGenerating(false);
       const msg = err instanceof Error ? err.message : "Generation failed.";
+      setGenerationError(msg);
       toast.error(msg);
     }
   };
