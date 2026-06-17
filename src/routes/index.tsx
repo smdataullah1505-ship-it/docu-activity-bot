@@ -1210,23 +1210,88 @@ function Flashcard({ front, back }: { front: string; back: string }) {
 function SocraticView({ data }: { data: AnyObj[] }) {
   return (
     <Section title="Socratic Questions">
-      <ol className="space-y-3">
+      <ol className="space-y-4">
         {data.map((q, i) => (
-          <ThinkAnswerItem
+          <SocraticItem
             key={i}
             index={i}
-            prompt={String(q.question)}
-            reveal={
-              q.hint ? (
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-semibold text-foreground">Hint / direction:</span> {String(q.hint)}
-                </p>
-              ) : null
-            }
+            question={String(q.question)}
+            hint={q.hint ? String(q.hint) : ""}
+            idealAnswer={q.idealAnswer ? String(q.idealAnswer) : ""}
           />
         ))}
       </ol>
     </Section>
+  );
+}
+
+function SocraticItem({
+  index,
+  question,
+  hint,
+  idealAnswer,
+}: {
+  index: number;
+  question: string;
+  hint: string;
+  idealAnswer: string;
+}) {
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {question}
+      </p>
+      {hint ? (
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
+        </p>
+      ) : null}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Type your answer here…"
+        disabled={shown}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!shown ? (
+          <Button size="sm" onClick={() => setShown(true)} disabled={!idealAnswer}>
+            <Eye className="mr-2 h-4 w-4" /> Show answer
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setShown(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {shown && idealAnswer && (
+        <div className="mt-3 space-y-2">
+          {text.trim() && (
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Your answer
+              </p>
+              <p className="mt-1 whitespace-pre-line">{text}</p>
+            </div>
+          )}
+          <div className="rounded-md bg-success/10 px-3 py-2 text-sm">
+            <p className="font-semibold text-success">Ideal answer from the document:</p>
+            <p className="mt-1 text-foreground">{idealAnswer}</p>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 
