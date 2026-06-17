@@ -125,5 +125,5 @@ ${truncated}
       }
     }
     if (!parsed) throw new Error("AI returned invalid JSON");
-    return { result: parsed as Record<string, unknown> };
+    return { json: JSON.stringify(parsed) };
   });
