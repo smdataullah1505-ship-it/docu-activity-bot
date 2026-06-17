@@ -584,8 +584,6 @@ function ActivityStep({
   setMcqDifficulty,
   mcqCount,
   setMcqCount,
-  reverseConcept,
-  setReverseConcept,
   onRun,
   onBack,
 }: {
@@ -594,8 +592,6 @@ function ActivityStep({
   setMcqDifficulty: (v: "easy" | "medium" | "hard" | "mixed") => void;
   mcqCount: 5 | 10 | 20;
   setMcqCount: (v: 5 | 10 | 20) => void;
-  reverseConcept: string;
-  setReverseConcept: (v: string) => void;
   onRun: (mode: ActivityKey) => void;
   onBack: () => void;
 }) {
