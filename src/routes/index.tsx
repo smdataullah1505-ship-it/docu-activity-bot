@@ -928,7 +928,13 @@ function difficultyColor(d: "easy" | "medium" | "hard"): string {
   return "bg-[oklch(0.92_0.1_25)] text-[oklch(0.4_0.18_25)]";
 }
 
-type MCQ = { question: string; options: string[]; correct: string; explanation: string };
+type MCQ = {
+  question: string;
+  options: string[];
+  correct: string;
+  explanation: string;
+  reference?: string;
+};
 
 function MCQView({ data }: { data: AnyObj }) {
   const all = useMemo(() => {
