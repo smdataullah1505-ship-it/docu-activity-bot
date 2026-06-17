@@ -691,6 +691,7 @@ function ResultsStep({
   topic,
   mode,
   generating,
+  error,
   result,
   cacheMeta,
   onBack,
@@ -699,6 +700,7 @@ function ResultsStep({
   topic: string;
   mode: ActivityKey | null;
   generating: boolean;
+  error: string | null;
   result: Record<string, unknown> | null;
   cacheMeta: CacheMeta;
   onBack: () => void;
@@ -727,7 +729,7 @@ function ResultsStep({
         </div>
       </div>
 
-      {cacheMeta && !generating && (
+      {cacheMeta && !generating && !error && (
         <div
           className={`no-print mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
             cacheMeta.source === "cache"
@@ -758,7 +760,24 @@ function ResultsStep({
         </div>
       )}
 
-      {!generating && result && mode && <ResultRenderer mode={mode} data={result} topic={topic} />}
+      {!generating && error && (
+        <div className="surface-card border border-danger/40 bg-danger/5 p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-danger" />
+            <div className="flex-1">
+              <p className="font-semibold text-danger">Generation failed</p>
+              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              <Button className="mt-4" onClick={onRegenerate}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!generating && !error && result && mode && (
+        <ResultRenderer mode={mode} data={result} topic={topic} />
+      )}
     </section>
   );
 }
