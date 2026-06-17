@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      generated_activities: {
+        Row: {
+          activity_type: string
+          created_at: string
+          difficulty: string | null
+          document_name: string
+          generated_json: Json
+          id: string
+          question_count: number | null
+          topic: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string
+          difficulty?: string | null
+          document_name?: string
+          generated_json: Json
+          id?: string
+          question_count?: number | null
+          topic: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string
+          difficulty?: string | null
+          document_name?: string
+          generated_json?: Json
+          id?: string
+          question_count?: number | null
+          topic?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
