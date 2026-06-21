@@ -25,6 +25,7 @@ import {
   Eye,
 } from "lucide-react";
 import { extractTopics, generateActivity } from "@/lib/activities.functions";
+import { saveCachedActivity } from "@/lib/activity-cache.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
