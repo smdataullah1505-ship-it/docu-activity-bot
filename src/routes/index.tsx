@@ -146,6 +146,7 @@ function LectureLab() {
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
+  const saveCachedActivityFn = useServerFn(saveCachedActivity);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
