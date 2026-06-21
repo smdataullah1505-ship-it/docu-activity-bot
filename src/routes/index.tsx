@@ -258,23 +258,16 @@ function LectureLab() {
       // 3. Save to cache (best-effort)
       const nowIso = new Date().toISOString();
       try {
-        if (forceRegenerate) {
-          let del = supabase
-            .from("generated_activities")
-            .delete()
-            .eq("topic", selectedTopic)
-            .eq("activity_type", mode);
-          del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
-          del = questionCount ? del.eq("question_count", questionCount) : del.is("question_count", null);
-          await del;
-        }
-        await supabase.from("generated_activities").insert({
-          document_name: fileName,
-          topic: selectedTopic,
-          activity_type: mode,
-          difficulty,
-          question_count: questionCount,
-          generated_json: parsed,
+        await saveCachedActivityFn({
+          data: {
+            documentName: fileName,
+            topic: selectedTopic,
+            activityType: mode,
+            difficulty,
+            questionCount,
+            generatedJson: parsed,
+            replace: forceRegenerate,
+          },
         });
       } catch (e) {
         console.warn("Cache save failed", e);
