@@ -285,9 +285,24 @@ function LectureLab() {
         // Auto-use the selected topic as the concept — no separate input needed.
         options.concept = selectedTopic;
       }
-      const { json } = await generateActivityFn({
-        data: { documentText, topic: selectedTopic, mode, options },
-      });
+      let json: string;
+      if (mode === "imageQuestion") {
+        ({ json } = await generateImageQuestionFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else if (mode === "chartInterpreter") {
+        ({ json } = await generateChartActivityFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else if (mode === "beforeAfter") {
+        ({ json } = await generateBeforeAfterFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else {
+        ({ json } = await generateActivityFn({
+          data: { documentText, topic: selectedTopic, mode, options },
+        }));
+      }
       const parsed = JSON.parse(json);
 
       // 3. Save to cache (best-effort)
