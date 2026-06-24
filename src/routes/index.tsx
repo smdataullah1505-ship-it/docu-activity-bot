@@ -86,7 +86,7 @@ type ActivityKey =
   | "chartInterpreter"
   | "beforeAfter";
 
-const VISUAL_MODES: ActivityKey[] = ["imageQuestion", "chartInterpreter", "beforeAfter"];
+
 
 const MODES: {
   key: ActivityKey;
