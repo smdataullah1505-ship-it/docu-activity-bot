@@ -1712,3 +1712,472 @@ function FindMistakeItem({
     </li>
   );
 }
+
+/* ============================================================
+ *  Image Question
+ * ============================================================ */
+
+type ImageQuestion = {
+  question: string;
+  answer: string;
+  explanation: string;
+  documentReference?: string;
+};
+
+function ImageQuestionView({ data }: { data: AnyObj }) {
+  const empty = Boolean(data.empty);
+  const message = data.message ? String(data.message) : "";
+  const image = data.image ? String(data.image) : "";
+  const imageDescription = data.imageDescription ? String(data.imageDescription) : "";
+  const questions = asArr<ImageQuestion>(data.questions);
+
+  const [active, setActive] = useState(0);
+  const [submitted, setSubmitted] = useState<Record<number, boolean>>({});
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  if (empty || questions.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {message || "This topic does not contain enough information for an image question. Please pick another topic."}
+      </div>
+    );
+  }
+
+  const q = questions[active];
+  const done = submitted[active];
+  const userAnswer = answers[active] || "";
+  const isCorrect =
+    done &&
+    userAnswer.trim().toLowerCase().includes(String(q.answer).trim().toLowerCase().slice(0, 30)) === false
+      ? overlapScore(String(q.answer), userAnswer) >= 0.35
+      : done;
+
+  return (
+    <Section title={`Image Question · ${active + 1} of ${questions.length}`}>
+      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+        <div className="surface-card overflow-hidden bg-muted/30">
+          {image ? (
+            <img
+              src={image}
+              alt={imageDescription || "Generated educational diagram"}
+              className="h-auto w-full select-none"
+              onCopy={(e) => e.preventDefault()}
+            />
+          ) : (
+            <div className="flex aspect-video items-center justify-center p-6 text-center text-sm text-muted-foreground">
+              <div>
+                <ImageIcon className="mx-auto mb-2 h-6 w-6" />
+                {imageDescription || "Image could not be generated. Use the description below."}
+              </div>
+            </div>
+          )}
+          {imageDescription && (
+            <p className="border-t border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+              {imageDescription}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Question {active + 1}
+          </p>
+          <p className="text-base font-semibold">{q.question}</p>
+          <textarea
+            value={userAnswer}
+            disabled={done}
+            onChange={(e) => setAnswers((a) => ({ ...a, [active]: e.target.value }))}
+            onPaste={(e) => e.preventDefault()}
+            rows={3}
+            placeholder="Type your answer based on the image…"
+            className="no-print w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          <div className="no-print flex flex-wrap gap-2">
+            {!done ? (
+              <Button
+                size="sm"
+                onClick={() => setSubmitted((s) => ({ ...s, [active]: true }))}
+                disabled={!userAnswer.trim()}
+              >
+                <Check className="mr-2 h-4 w-4" /> Submit answer
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSubmitted((s) => ({ ...s, [active]: false }));
+                  setAnswers((a) => ({ ...a, [active]: "" }));
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" /> Try again
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setActive((i) => Math.max(0, i - 1))}
+              disabled={active === 0}
+            >
+              ← Prev
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setActive((i) => Math.min(questions.length - 1, i + 1))}
+              disabled={active >= questions.length - 1}
+            >
+              Next →
+            </Button>
+          </div>
+          {done && (
+            <div className="space-y-2">
+              <div
+                className={`rounded-md px-3 py-2 text-sm font-semibold ${
+                  isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                }`}
+              >
+                {isCorrect ? "✅ Correct!" : `❌ Incorrect. Correct answer: ${q.answer}`}
+              </div>
+              {q.explanation && (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm">
+                  <span className="font-semibold">Explanation:</span> {q.explanation}
+                </p>
+              )}
+              {q.documentReference && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold">From the document:</span> {q.documentReference}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/* ============================================================
+ *  Chart Interpreter
+ * ============================================================ */
+
+const CHART_COLORS = [
+  "oklch(0.55 0.18 260)",
+  "oklch(0.65 0.18 145)",
+  "oklch(0.7 0.16 70)",
+  "oklch(0.6 0.18 25)",
+  "oklch(0.6 0.15 200)",
+  "oklch(0.55 0.2 320)",
+  "oklch(0.5 0.18 100)",
+  "oklch(0.65 0.16 340)",
+];
+
+type ChartQuestion = { question: string; answer: string; explanation: string };
+
+function ChartInterpreterView({ data }: { data: AnyObj }) {
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No chart data available for this topic in the document.")}
+      </div>
+    );
+  }
+  const chartType = String(data.chartType || "bar") as "bar" | "line" | "pie";
+  const title = String(data.title || "Chart");
+  const xLabel = String(data.xLabel || "");
+  const yLabel = String(data.yLabel || "");
+  const sourceQuote = data.sourceQuote ? String(data.sourceQuote) : "";
+  const points = asArr<{ name: unknown; value: unknown }>(data.data).map((p) => ({
+    name: String(p.name),
+    value: Number(p.value),
+  }));
+  const questions = asArr<ChartQuestion>(data.questions);
+
+  return (
+    <>
+      <Section title={title}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            {chartType === "pie" ? (
+              <PieChart>
+                <Pie
+                  data={points}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={110}
+                  label
+                >
+                  {points.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip />
+                <Legend />
+              </PieChart>
+            ) : chartType === "line" ? (
+              <LineChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="name" label={xLabel ? { value: xLabel, position: "insideBottom", offset: -5 } : undefined} />
+                <YAxis label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft" } : undefined} />
+                <RechartsTooltip />
+                <Line type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2} dot />
+              </LineChart>
+            ) : (
+              <BarChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="name" label={xLabel ? { value: xLabel, position: "insideBottom", offset: -5 } : undefined} />
+                <YAxis label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft" } : undefined} />
+                <RechartsTooltip />
+                <Bar dataKey="value" fill={CHART_COLORS[0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+        {sourceQuote && (
+          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">From the document:</span> {sourceQuote}
+          </p>
+        )}
+      </Section>
+
+      <Section title="Analytical questions">
+        <ol className="space-y-3">
+          {questions.map((q, i) => (
+            <ChartQuestionItem key={i} index={i} q={q} />
+          ))}
+        </ol>
+      </Section>
+    </>
+  );
+}
+
+function ChartQuestionItem({ index, q }: { index: number; q: ChartQuestion }) {
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const isCorrect = submitted && overlapScore(String(q.answer), text) >= 0.3;
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {q.question}
+      </p>
+      <textarea
+        value={text}
+        disabled={submitted}
+        onChange={(e) => setText(e.target.value)}
+        onPaste={(e) => e.preventDefault()}
+        rows={2}
+        placeholder="Your answer…"
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2">
+        {!submitted ? (
+          <Button size="sm" onClick={() => setSubmitted(true)} disabled={!text.trim()}>
+            <Check className="mr-2 h-4 w-4" /> Submit
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {submitted && (
+        <div className="mt-3 space-y-2">
+          <div
+            className={`rounded-md px-3 py-2 text-sm font-semibold ${
+              isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {isCorrect ? "✅ Matches the document" : `Correct answer: ${q.answer}`}
+          </div>
+          {q.explanation && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <span className="font-semibold">Explanation:</span> {q.explanation}
+            </p>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ============================================================
+ *  Before / After Visualization
+ * ============================================================ */
+
+type BeforePoint = { cause: number; effect: number; note?: string };
+
+function BeforeAfterView({ data }: { data: AnyObj }) {
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No causal relationship found for this topic in the document.")}
+      </div>
+    );
+  }
+  const title = String(data.title || "Cause–Effect");
+  const causeName = String(data.causeName || "Input");
+  const causeUnit = String(data.causeUnit || "");
+  const effectName = String(data.effectName || "Output");
+  const effectUnit = String(data.effectUnit || "");
+  const min = Number(data.min ?? 0);
+  const max = Number(data.max ?? 100);
+  const step = Number(data.step ?? 1) || 1;
+  const defaultVal = Number(data.default ?? min);
+  const relationship = String(data.relationship || "");
+  const documentReference = data.documentReference ? String(data.documentReference) : "";
+  const insight = data.insight ? String(data.insight) : "";
+  const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
+    cause: Number(p.cause),
+    effect: Number(p.effect),
+    note: p.note ? String(p.note) : "",
+  }));
+  const points = rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+
+  const [value, setValue] = useState<number>(defaultVal);
+
+  const current = useMemo(() => {
+    if (points.length === 0) return null;
+    // nearest point
+    let best = points[0];
+    let bestDist = Math.abs(best.cause - value);
+    for (const p of points) {
+      const d = Math.abs(p.cause - value);
+      if (d < bestDist) {
+        best = p;
+        bestDist = d;
+      }
+    }
+    return best;
+  }, [points, value]);
+
+  if (points.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        No data points were generated for this relationship.
+      </div>
+    );
+  }
+
+  return (
+    <Section title={title}>
+      <p className="text-sm text-muted-foreground">{relationship}</p>
+
+      <div className="mt-5 grid gap-6 lg:grid-cols-[3fr_2fr]">
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis
+                dataKey="cause"
+                type="number"
+                domain={[min, max]}
+                label={{
+                  value: `${causeName}${causeUnit ? ` (${causeUnit})` : ""}`,
+                  position: "insideBottom",
+                  offset: -5,
+                }}
+              />
+              <YAxis
+                label={{
+                  value: `${effectName}${effectUnit ? ` (${effectUnit})` : ""}`,
+                  angle: -90,
+                  position: "insideLeft",
+                }}
+              />
+              <RechartsTooltip />
+              <Line
+                type="monotone"
+                dataKey="effect"
+                stroke={CHART_COLORS[0]}
+                strokeWidth={2}
+                dot
+              />
+              {current && (
+                <ReferenceLine
+                  x={current.cause}
+                  stroke={CHART_COLORS[3]}
+                  strokeDasharray="4 4"
+                  label={{ value: "now", position: "top", fill: "currentColor", fontSize: 11 }}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between text-sm">
+              <label className="font-semibold">
+                {causeName}
+                {causeUnit ? ` (${causeUnit})` : ""}
+              </label>
+              <span className="font-mono text-primary">{value}</span>
+            </div>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              onChange={(e) => setValue(Number(e.target.value))}
+              className="mt-2 w-full accent-[oklch(0.55_0.18_260)]"
+            />
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+              <span>{min}</span>
+              <span>{max}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setValue(defaultVal)}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" /> Reset to baseline
+            </Button>
+          </div>
+
+          {current && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Current {effectName}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-primary">
+                {current.effect}
+                {effectUnit ? <span className="ml-1 text-sm text-muted-foreground">{effectUnit}</span> : null}
+              </p>
+              {current.note && (
+                <p className="mt-2 text-sm" onCopy={(e) => e.preventDefault()}>
+                  {current.note}
+                </p>
+              )}
+            </div>
+          )}
+
+          {insight && (
+            <details className="rounded-md border border-border bg-card p-3 text-sm">
+              <summary className="cursor-pointer font-semibold">Explain</summary>
+              <p className="mt-2 text-muted-foreground" onCopy={(e) => e.preventDefault()}>
+                {insight}
+              </p>
+              {documentReference && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <span className="font-semibold">From the document:</span> {documentReference}
+                </p>
+              )}
+            </details>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
