@@ -81,7 +81,12 @@ type ActivityKey =
   | "workshops"
   | "examples"
   | "reverseQuestions"
-  | "findMistakes";
+  | "findMistakes"
+  | "imageQuestion"
+  | "chartInterpreter"
+  | "beforeAfter";
+
+const VISUAL_MODES: ActivityKey[] = ["imageQuestion", "chartInterpreter", "beforeAfter"];
 
 const MODES: {
   key: ActivityKey;
@@ -99,6 +104,9 @@ const MODES: {
   { key: "examples", title: "Real-World Examples", blurb: "Applied scenarios", icon: Globe2 },
   { key: "reverseQuestions", title: "Reverse Questioning", blurb: "Questions students may ask", icon: HelpCircle },
   { key: "findMistakes", title: "Find the Mistake", blurb: "Spot & correct errors", icon: AlertTriangle },
+  { key: "imageQuestion", title: "Image Question", blurb: "AI-generated diagram + question", icon: ImageIcon },
+  { key: "chartInterpreter", title: "Chart Interpreter", blurb: "Read & analyse data from the doc", icon: BarChart3 },
+  { key: "beforeAfter", title: "Before / After", blurb: "Interactive cause–effect slider", icon: SlidersHorizontal },
 ];
 
 type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
