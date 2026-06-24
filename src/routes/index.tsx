@@ -23,8 +23,32 @@ import {
   FileType2,
   Database,
   Eye,
+  ImageIcon,
+  BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ReferenceLine,
+} from "recharts";
 import { extractTopics, generateActivity } from "@/lib/activities.functions";
+import {
+  generateImageQuestion,
+  generateChartActivity,
+  generateBeforeAfter,
+} from "@/lib/visual-activities.functions";
 import { saveCachedActivity } from "@/lib/activity-cache.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
 import { supabase } from "@/integrations/supabase/client";
