@@ -178,6 +178,9 @@ function LectureLab() {
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
+  const generateImageQuestionFn = useServerFn(generateImageQuestion);
+  const generateChartActivityFn = useServerFn(generateChartActivity);
+  const generateBeforeAfterFn = useServerFn(generateBeforeAfter);
   const saveCachedActivityFn = useServerFn(saveCachedActivity);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
