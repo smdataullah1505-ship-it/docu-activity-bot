@@ -1746,11 +1746,7 @@ function ImageQuestionView({ data }: { data: AnyObj }) {
   const q = questions[active];
   const done = submitted[active];
   const userAnswer = answers[active] || "";
-  const isCorrect =
-    done &&
-    userAnswer.trim().toLowerCase().includes(String(q.answer).trim().toLowerCase().slice(0, 30)) === false
-      ? overlapScore(String(q.answer), userAnswer) >= 0.35
-      : done;
+  const isCorrect = done && overlapScore(String(q.answer), userAnswer) >= 0.35;
 
   return (
     <Section title={`Image Question · ${active + 1} of ${questions.length}`}>
