@@ -875,6 +875,9 @@ function ResultRenderer({ mode, data, topic }: { mode: ActivityKey; data: AnyObj
         <ReverseView data={asArr(payload) ?? asArr(data.reverseQuestions)} />
       )}
       {mode === "findMistakes" && <FindMistakesView data={asArr(payload) ?? asArr(data.findMistakes)} />}
+      {mode === "imageQuestion" && <ImageQuestionView data={data} />}
+      {mode === "chartInterpreter" && <ChartInterpreterView data={data} />}
+      {mode === "beforeAfter" && <BeforeAfterView data={data} />
     </div>
   );
 }
