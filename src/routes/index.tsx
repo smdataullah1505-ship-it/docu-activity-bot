@@ -49,9 +49,8 @@ import {
   generateChartActivity,
   generateBeforeAfter,
 } from "@/lib/visual-activities.functions";
-import { saveCachedActivity } from "@/lib/activity-cache.functions";
+import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
-import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
