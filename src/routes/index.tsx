@@ -181,6 +181,7 @@ function LectureLab() {
   const generateChartActivityFn = useServerFn(generateChartActivity);
   const generateBeforeAfterFn = useServerFn(generateBeforeAfter);
   const saveCachedActivityFn = useServerFn(saveCachedActivity);
+  const getCachedActivityFn = useServerFn(getCachedActivity);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
