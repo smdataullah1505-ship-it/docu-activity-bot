@@ -53,6 +53,7 @@ import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.func
 import { extractTextFromFile } from "@/lib/parse-document";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
+import { AuthGate } from "@/components/auth-gate";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -65,7 +66,11 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  component: LectureLab,
+  component: () => (
+    <AuthGate>
+      <LectureLab />
+    </AuthGate>
+  ),
 });
 
 type Step = "upload" | "topics" | "activity" | "results";
