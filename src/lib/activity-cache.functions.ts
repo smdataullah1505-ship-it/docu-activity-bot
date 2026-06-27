@@ -1,27 +1,63 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const SaveSchema = z.object({
-  documentName: z.string().max(500).default(""),
+const LookupSchema = z.object({
   topic: z.string().min(1).max(500),
   activityType: z.string().min(1).max(100),
   difficulty: z.string().max(50).nullable().optional(),
   questionCount: z.number().int().min(0).max(100).nullable().optional(),
+});
+
+const SaveSchema = LookupSchema.extend({
+  documentName: z.string().max(500).default(""),
   generatedJson: z.unknown(),
   replace: z.boolean().optional().default(false),
 });
 
+export const getCachedActivity = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => LookupSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase;
+    const difficulty = data.difficulty ?? null;
+    const questionCount = data.questionCount ?? null;
+    let q = supabase
+      .from("saved_activities")
+      .select("generated_json, created_at")
+      .eq("user_id", context.userId)
+      .eq("topic", data.topic)
+      .eq("activity_type", data.activityType)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    q = difficulty ? q.eq("difficulty", difficulty) : q.is("difficulty", null);
+    q = questionCount
+      ? q.eq("question_count", questionCount)
+      : q.is("question_count", null);
+    const { data: rows, error } = await q;
+    if (error) throw new Error(error.message);
+    if (!rows || rows.length === 0) return { hit: false as const };
+    return {
+      hit: true as const,
+      generatedJson: rows[0].generated_json,
+      createdAt: rows[0].created_at,
+    };
+  });
+
 export const saveCachedActivity = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data) => SaveSchema.parse(data))
-  .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase;
+    const userId = context.userId;
     const difficulty = data.difficulty ?? null;
     const questionCount = data.questionCount ?? null;
 
     if (data.replace) {
-      let del = supabaseAdmin
-        .from("generated_activities")
+      let del = supabase
+        .from("saved_activities")
         .delete()
+        .eq("user_id", userId)
         .eq("topic", data.topic)
         .eq("activity_type", data.activityType);
       del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
@@ -31,7 +67,8 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
       await del;
     }
 
-    const { error } = await supabaseAdmin.from("generated_activities").insert({
+    const { error } = await supabase.from("saved_activities").insert({
+      user_id: userId,
       document_name: data.documentName,
       topic: data.topic,
       activity_type: data.activityType,
