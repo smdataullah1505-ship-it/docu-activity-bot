@@ -14,38 +14,141 @@ export type Database = {
   }
   public: {
     Tables: {
-      generated_activities: {
+      activity_feedback: {
+        Row: {
+          activity_id: string
+          comment: string | null
+          created_at: string
+          id: string
+          rating: number | null
+          user_id: string
+        }
+        Insert: {
+          activity_id: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          rating?: number | null
+          user_id: string
+        }
+        Update: {
+          activity_id?: string
+          comment?: string | null
+          created_at?: string
+          id?: string
+          rating?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_feedback_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "saved_activities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          extracted_topics: Json | null
+          file_name: string
+          file_type: string | null
+          file_url: string | null
+          id: string
+          uploaded_at: string
+          user_id: string
+        }
+        Insert: {
+          extracted_topics?: Json | null
+          file_name: string
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          uploaded_at?: string
+          user_id: string
+        }
+        Update: {
+          extracted_topics?: Json | null
+          file_name?: string
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          uploaded_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      saved_activities: {
         Row: {
           activity_type: string
           created_at: string
           difficulty: string | null
+          document_id: string | null
           document_name: string
           generated_json: Json
           id: string
           question_count: number | null
           topic: string
+          user_id: string
         }
         Insert: {
           activity_type: string
           created_at?: string
           difficulty?: string | null
+          document_id?: string | null
           document_name?: string
           generated_json: Json
           id?: string
           question_count?: number | null
           topic: string
+          user_id: string
         }
         Update: {
           activity_type?: string
           created_at?: string
           difficulty?: string | null
+          document_id?: string | null
           document_name?: string
           generated_json?: Json
           id?: string
           question_count?: number | null
           topic?: string
+          user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "saved_activities_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
