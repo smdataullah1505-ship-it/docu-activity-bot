@@ -257,21 +257,23 @@ function LectureLab() {
 
       // 1. Check cache first
       if (!forceRegenerate) {
-        let q = supabase
-          .from("generated_activities")
-          .select("generated_json, created_at")
-          .eq("topic", selectedTopic)
-          .eq("activity_type", mode)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        q = difficulty ? q.eq("difficulty", difficulty) : q.is("difficulty", null);
-        q = questionCount ? q.eq("question_count", questionCount) : q.is("question_count", null);
-        const { data: cached } = await q;
-        if (cached && cached.length > 0) {
-          setResult(cached[0].generated_json as Record<string, unknown>);
-          setCacheMeta({ source: "cache", createdAt: cached[0].created_at });
-          setGenerating(false);
-          return;
+        try {
+          const cached = await getCachedActivityFn({
+            data: {
+              topic: selectedTopic,
+              activityType: mode,
+              difficulty,
+              questionCount,
+            },
+          });
+          if (cached.hit) {
+            setResult(cached.generatedJson as Record<string, unknown>);
+            setCacheMeta({ source: "cache", createdAt: cached.createdAt });
+            setGenerating(false);
+            return;
+          }
+        } catch {
+          /* cache lookup failed — fall through to fresh generation */
         }
       }
 
