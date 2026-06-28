@@ -54,6 +54,8 @@ import { extractTextFromFile } from "@/lib/parse-document";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { AuthGate } from "@/components/auth-gate";
+import { AppHeader } from "@/components/app-header";
+import { useSession, useProfile } from "@/lib/use-profile";
 
 export const Route = createFileRoute("/lab")({
   head: () => ({
