@@ -113,15 +113,8 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const _unused = () => {
-      .catch((e) => {
-        if (active) setErr(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [code, byCodeFn, byIdFn, role]);
+
+
 
   const beginAttempt = async () => {
     if (!quiz) return;
