@@ -55,7 +55,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { AuthGate } from "@/components/auth-gate";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/lab")({
   head: () => ({
     meta: [
       { title: "Lecture Lab AI — Classroom Activity Generator" },
