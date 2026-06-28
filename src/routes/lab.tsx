@@ -68,10 +68,24 @@ export const Route = createFileRoute("/lab")({
   }),
   component: () => (
     <AuthGate>
-      <LectureLab />
+      <LabWithHeader />
     </AuthGate>
   ),
 });
+
+function LabWithHeader() {
+  const { session } = useSession();
+  const { profile } = useProfile(session);
+  return (
+    <>
+      {profile && (
+        <AppHeader role={profile.role} displayName={profile.display_name} email={profile.email} />
+      )}
+      <LectureLab />
+    </>
+  );
+}
+
 
 type Step = "upload" | "topics" | "activity" | "results";
 
