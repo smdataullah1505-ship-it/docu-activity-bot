@@ -147,8 +147,8 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
     );
   }
 
-  // Teacher viewing their own quiz: preview mode
-  const isOwner = quiz.creator_id && quiz.creator_id === (attempt?.id /* not available; placeholder */, undefined);
+
+
 
   // For preview mode (teacher viewing a teacher quiz they created)
   if (role === "teacher" && !quiz.is_practice && !started) {
