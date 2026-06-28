@@ -279,7 +279,14 @@ export const submitAttempt = createServerFn({ method: "POST" })
       if (q && a.selected_option === q.correct_answer) score++;
     }
 
-    const update: Record<string, unknown> = {
+    const update: {
+      answers: unknown;
+      score: number;
+      time_taken: number;
+      is_completed: boolean;
+      completed_at: string;
+      suspicious_events?: unknown;
+    } = {
       answers: data.answers,
       score,
       time_taken: data.timeTaken,
@@ -290,7 +297,8 @@ export const submitAttempt = createServerFn({ method: "POST" })
 
     const { error } = await supabase
       .from("quiz_attempts")
-      .update(update)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update(update as any)
       .eq("id", data.attemptId)
       .eq("student_id", userId);
     if (error) throw new Error(error.message);
