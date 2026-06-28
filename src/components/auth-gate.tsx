@@ -332,6 +332,7 @@ function useResendTimer() {
 function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"teacher" | "student">("student");
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("");
   const [agree, setAgree] = useState(false);
@@ -346,7 +347,7 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { data: { display_name: displayName.trim() }, shouldCreateUser: true },
+      options: { data: { display_name: displayName.trim(), role }, shouldCreateUser: true },
     });
     setLoading(false);
     if (error) return toast.error(error.message);
@@ -369,6 +370,27 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
       <p className="text-sm text-slate-600 mt-1">Start creating interactive activities in minutes.</p>
 
       <div className="mt-5 space-y-3">
+        {!otpSent && (
+          <div>
+            <label className="text-sm font-medium">I am a</label>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              {(["teacher", "student"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRole(r)}
+                  className={`px-3 py-2 rounded-lg border text-sm font-medium capitalize transition ${
+                    role === r
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  {r === "teacher" ? "👨‍🏫 Teacher" : "🎓 Student"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <label className="text-sm font-medium">Display name</label>
           <input
@@ -402,6 +424,7 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
             I agree to the Terms of Service and Privacy Policy
           </label>
         )}
+
 
         {otpSent && (
           <div className="space-y-3">

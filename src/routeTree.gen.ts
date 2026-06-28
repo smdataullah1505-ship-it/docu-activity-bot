@@ -9,38 +9,120 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LabRouteImport } from './routes/lab'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as QuizNewRouteImport } from './routes/quiz.new'
+import { Route as QuizCodeRouteImport } from './routes/quiz.$code'
+import { Route as AnalyticsQuizIdRouteImport } from './routes/analytics.$quizId'
 
+const LabRoute = LabRouteImport.update({
+  id: '/lab',
+  path: '/lab',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QuizNewRoute = QuizNewRouteImport.update({
+  id: '/quiz/new',
+  path: '/quiz/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuizCodeRoute = QuizCodeRouteImport.update({
+  id: '/quiz/$code',
+  path: '/quiz/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsQuizIdRoute = AnalyticsQuizIdRouteImport.update({
+  id: '/$quizId',
+  path: '/$quizId',
+  getParentRoute: () => AnalyticsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRouteWithChildren
+  '/lab': typeof LabRoute
+  '/analytics/$quizId': typeof AnalyticsQuizIdRoute
+  '/quiz/$code': typeof QuizCodeRoute
+  '/quiz/new': typeof QuizNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRouteWithChildren
+  '/lab': typeof LabRoute
+  '/analytics/$quizId': typeof AnalyticsQuizIdRoute
+  '/quiz/$code': typeof QuizCodeRoute
+  '/quiz/new': typeof QuizNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRouteWithChildren
+  '/lab': typeof LabRoute
+  '/analytics/$quizId': typeof AnalyticsQuizIdRoute
+  '/quiz/$code': typeof QuizCodeRoute
+  '/quiz/new': typeof QuizNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/lab'
+    | '/analytics/$quizId'
+    | '/quiz/$code'
+    | '/quiz/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/analytics'
+    | '/lab'
+    | '/analytics/$quizId'
+    | '/quiz/$code'
+    | '/quiz/new'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/lab'
+    | '/analytics/$quizId'
+    | '/quiz/$code'
+    | '/quiz/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRouteWithChildren
+  LabRoute: typeof LabRoute
+  QuizCodeRoute: typeof QuizCodeRoute
+  QuizNewRoute: typeof QuizNewRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/lab': {
+      id: '/lab'
+      path: '/lab'
+      fullPath: '/lab'
+      preLoaderRoute: typeof LabRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +130,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/quiz/new': {
+      id: '/quiz/new'
+      path: '/quiz/new'
+      fullPath: '/quiz/new'
+      preLoaderRoute: typeof QuizNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quiz/$code': {
+      id: '/quiz/$code'
+      path: '/quiz/$code'
+      fullPath: '/quiz/$code'
+      preLoaderRoute: typeof QuizCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics/$quizId': {
+      id: '/analytics/$quizId'
+      path: '/$quizId'
+      fullPath: '/analytics/$quizId'
+      preLoaderRoute: typeof AnalyticsQuizIdRouteImport
+      parentRoute: typeof AnalyticsRoute
+    }
   }
 }
 
+interface AnalyticsRouteChildren {
+  AnalyticsQuizIdRoute: typeof AnalyticsQuizIdRoute
+}
+
+const AnalyticsRouteChildren: AnalyticsRouteChildren = {
+  AnalyticsQuizIdRoute: AnalyticsQuizIdRoute,
+}
+
+const AnalyticsRouteWithChildren = AnalyticsRoute._addFileChildren(
+  AnalyticsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRouteWithChildren,
+  LabRoute: LabRoute,
+  QuizCodeRoute: QuizCodeRoute,
+  QuizNewRoute: QuizNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
