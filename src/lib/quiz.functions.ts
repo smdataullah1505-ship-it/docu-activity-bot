@@ -224,14 +224,19 @@ export const saveAttemptProgress = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => SaveProgressInput.parse(d))
   .handler(async ({ data, context }) => {
-    const update: Record<string, unknown> = {
+    const update: {
+      answers: unknown;
+      current_question_index: number;
+      suspicious_events?: unknown;
+    } = {
       answers: data.answers,
       current_question_index: data.currentQuestionIndex,
     };
     if (data.suspiciousEvents) update.suspicious_events = data.suspiciousEvents;
     const { error } = await context.supabase
       .from("quiz_attempts")
-      .update(update)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update(update as any)
       .eq("id", data.attemptId)
       .eq("student_id", context.userId);
     if (error) throw new Error(error.message);
