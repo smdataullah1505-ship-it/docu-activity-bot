@@ -102,11 +102,18 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
       .then(async (q) => {
         if (!active) return;
         setQuiz(q as unknown as Quiz);
-        // Don't auto-create attempt for teacher previewing their own quiz
-        if (role === "student" || (q as Quiz).creator_id) {
-          // For students attempting, or self-attempting practice
-        }
       })
+      .catch((e) => {
+        if (active) setErr(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  const _unused = () => {
       .catch((e) => {
         if (active) setErr(e instanceof Error ? e.message : String(e));
       })
