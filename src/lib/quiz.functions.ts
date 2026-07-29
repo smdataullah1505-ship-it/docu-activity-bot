@@ -157,20 +157,46 @@ export const createQuiz = createServerFn({ method: "POST" })
     return { id: row.id, shareCode: row.share_code };
   });
 
+// Strip the answer key from questions before sending them to a non-owner.
+function stripAnswers(questions: unknown): QuizQuestion[] {
+  const list = (questions as QuizQuestion[]) || [];
+  return list.map((q) => ({
+    question: q.question,
+    options: q.options,
+    correct_answer: "",
+    explanation: "",
+    difficulty: q.difficulty,
+  }));
+}
+
+async function loadQuizForViewer(
+  match: { column: "id" | "share_code"; value: string },
+  userId: string,
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: q, error } = await supabaseAdmin
+    .from("quizzes")
+    .select("*")
+    .eq(match.column, match.value)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!q) throw new Error("Quiz not found");
+
+  // Owner sees the full quiz (preview / editing).
+  if (q.creator_id === userId) return q;
+
+  // Everyone else may only see published class quizzes, without the answer key.
+  if (!q.is_published || q.is_practice) throw new Error("Quiz not found");
+  return { ...q, questions: stripAnswers(q.questions) as unknown as typeof q.questions };
+}
+
 // ===== Fetch quiz by id =====
 export const getQuiz = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { data: q, error } = await context.supabase
-      .from("quizzes")
-      .select("*")
-      .eq("id", data.id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!q) throw new Error("Quiz not found");
-    return q;
-  });
+  .handler(async ({ data, context }) =>
+    loadQuizForViewer({ column: "id", value: data.id }, context.userId),
+  );
 
 // ===== Fetch quiz by share code =====
 export const getQuizByShareCode = createServerFn({ method: "POST" })
@@ -178,16 +204,39 @@ export const getQuizByShareCode = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({ code: z.string().min(4).max(8) }).parse(d),
   )
+  .handler(async ({ data, context }) =>
+    loadQuizForViewer(
+      { column: "share_code", value: data.code.toUpperCase() },
+      context.userId,
+    ),
+  );
+
+// ===== Answer key: only the creator, or a student who already finished =====
+export const getQuizAnswerKey = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ quizId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: q, error } = await context.supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: q } = await supabaseAdmin
       .from("quizzes")
-      .select("*")
-      .eq("share_code", data.code.toUpperCase())
+      .select("id, creator_id, questions")
+      .eq("id", data.quizId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
     if (!q) throw new Error("Quiz not found");
-    return q;
+
+    if (q.creator_id !== context.userId) {
+      const { data: attempt } = await supabaseAdmin
+        .from("quiz_attempts")
+        .select("id")
+        .eq("quiz_id", data.quizId)
+        .eq("student_id", context.userId)
+        .eq("is_completed", true)
+        .maybeSingle();
+      if (!attempt) throw new Error("Answers are available after you submit the quiz");
+    }
+    return { questions: q.questions as unknown as QuizQuestion[] };
   });
+
 
 // ===== Start or resume attempt =====
 export const startOrResumeAttempt = createServerFn({ method: "POST" })
