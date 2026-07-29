@@ -415,14 +415,17 @@ export const getQuizAttempts = createServerFn({ method: "POST" })
       .order("completed_at", { ascending: false });
 
     const studentIds = Array.from(new Set((attempts || []).map((a) => a.student_id)));
-    let students: Record<string, { display_name: string | null; email: string | null }> = {};
+    const students: Record<string, { display_name: string | null; email: string | null }> = {};
     if (studentIds.length > 0) {
-      const { data: profs } = await supabase
+      // Scoped lookup: only students who attempted this teacher's own quiz.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: profs } = await supabaseAdmin
         .from("profiles")
         .select("id, display_name, email")
         .in("id", studentIds);
       for (const p of profs || []) students[p.id] = { display_name: p.display_name, email: p.email };
     }
+
     return { quiz, attempts: attempts || [], students };
   });
 
