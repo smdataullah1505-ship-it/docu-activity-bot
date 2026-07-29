@@ -117,7 +117,24 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-
+  // Answers are withheld by the server until the attempt is submitted.
+  useEffect(() => {
+    if (!quiz || !attempt?.is_completed) return;
+    if (quiz.questions.some((q) => q.correct_answer)) return;
+    let active = true;
+    answerKeyFn({ data: { quizId: quiz.id } })
+      .then((res) => {
+        if (!active) return;
+        setQuiz((prev) =>
+          prev ? { ...prev, questions: res.questions as QuizQuestion[] } : prev,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz?.id, attempt?.is_completed]);
 
 
   const beginAttempt = async () => {
