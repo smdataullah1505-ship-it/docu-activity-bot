@@ -329,6 +329,28 @@ function useResendTimer() {
   return { secs, start: () => setSecs(60) };
 }
 
+/**
+ * Supabase issues the 6-digit code under different token types depending on
+ * whether the address is new (signup), existing (magiclink) or recovering.
+ * Try each until one verifies so codes from any of those emails work.
+ */
+async function verifyEmailCode(email: string, token: string) {
+  const types = ["email", "signup", "magiclink", "recovery"] as const;
+  let lastError: { message: string } | null = null;
+  for (const type of types) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: type as "email",
+    });
+    if (!error && data.session) return { error: null };
+    if (error && /expired/i.test(error.message)) return { error };
+    lastError = error ?? { message: "Could not verify the code" };
+  }
+  return { error: lastError };
+}
+
+
 function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
