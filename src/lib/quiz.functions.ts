@@ -157,20 +157,46 @@ export const createQuiz = createServerFn({ method: "POST" })
     return { id: row.id, shareCode: row.share_code };
   });
 
+// Strip the answer key from questions before sending them to a non-owner.
+function stripAnswers(questions: unknown): QuizQuestion[] {
+  const list = (questions as QuizQuestion[]) || [];
+  return list.map((q) => ({
+    question: q.question,
+    options: q.options,
+    correct_answer: "",
+    explanation: "",
+    difficulty: q.difficulty,
+  }));
+}
+
+async function loadQuizForViewer(
+  match: { column: "id" | "share_code"; value: string },
+  userId: string,
+) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: q, error } = await supabaseAdmin
+    .from("quizzes")
+    .select("*")
+    .eq(match.column, match.value)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!q) throw new Error("Quiz not found");
+
+  // Owner sees the full quiz (preview / editing).
+  if (q.creator_id === userId) return q;
+
+  // Everyone else may only see published class quizzes, without the answer key.
+  if (!q.is_published || q.is_practice) throw new Error("Quiz not found");
+  return { ...q, questions: stripAnswers(q.questions) as unknown as typeof q.questions };
+}
+
 // ===== Fetch quiz by id =====
 export const getQuiz = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { data: q, error } = await context.supabase
-      .from("quizzes")
-      .select("*")
-      .eq("id", data.id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!q) throw new Error("Quiz not found");
-    return q;
-  });
+  .handler(async ({ data, context }) =>
+    loadQuizForViewer({ column: "id", value: data.id }, context.userId),
+  );
 
 // ===== Fetch quiz by share code =====
 export const getQuizByShareCode = createServerFn({ method: "POST" })
@@ -178,16 +204,39 @@ export const getQuizByShareCode = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({ code: z.string().min(4).max(8) }).parse(d),
   )
+  .handler(async ({ data, context }) =>
+    loadQuizForViewer(
+      { column: "share_code", value: data.code.toUpperCase() },
+      context.userId,
+    ),
+  );
+
+// ===== Answer key: only the creator, or a student who already finished =====
+export const getQuizAnswerKey = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ quizId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: q, error } = await context.supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: q } = await supabaseAdmin
       .from("quizzes")
-      .select("*")
-      .eq("share_code", data.code.toUpperCase())
+      .select("id, creator_id, questions")
+      .eq("id", data.quizId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
     if (!q) throw new Error("Quiz not found");
-    return q;
+
+    if (q.creator_id !== context.userId) {
+      const { data: attempt } = await supabaseAdmin
+        .from("quiz_attempts")
+        .select("id")
+        .eq("quiz_id", data.quizId)
+        .eq("student_id", context.userId)
+        .eq("is_completed", true)
+        .maybeSingle();
+      if (!attempt) throw new Error("Answers are available after you submit the quiz");
+    }
+    return { questions: q.questions as unknown as QuizQuestion[] };
   });
+
 
 // ===== Start or resume attempt =====
 export const startOrResumeAttempt = createServerFn({ method: "POST" })
@@ -265,12 +314,15 @@ export const submitAttempt = createServerFn({ method: "POST" })
     if (!attempt) throw new Error("Attempt not found");
     if (attempt.is_completed) throw new Error("Attempt already submitted");
 
-    const { data: quiz } = await supabase
+    // Grading needs the answer key, which students cannot read directly.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: quiz } = await supabaseAdmin
       .from("quizzes")
       .select("questions")
       .eq("id", attempt.quiz_id)
       .maybeSingle();
     if (!quiz) throw new Error("Quiz not found");
+
 
     const questions = quiz.questions as unknown as QuizQuestion[];
     let score = 0;
@@ -363,14 +415,17 @@ export const getQuizAttempts = createServerFn({ method: "POST" })
       .order("completed_at", { ascending: false });
 
     const studentIds = Array.from(new Set((attempts || []).map((a) => a.student_id)));
-    let students: Record<string, { display_name: string | null; email: string | null }> = {};
+    const students: Record<string, { display_name: string | null; email: string | null }> = {};
     if (studentIds.length > 0) {
-      const { data: profs } = await supabase
+      // Scoped lookup: only students who attempted this teacher's own quiz.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: profs } = await supabaseAdmin
         .from("profiles")
         .select("id, display_name, email")
         .in("id", studentIds);
       for (const p of profs || []) students[p.id] = { display_name: p.display_name, email: p.email };
     }
+
     return { quiz, attempts: attempts || [], students };
   });
 
@@ -440,12 +495,15 @@ export const getStudentDashboard = createServerFn({ method: "POST" })
     const quizIds = Array.from(new Set((attempts || []).map((a) => a.quiz_id)));
     let quizMap: Record<string, { title: string; question_count: number | null; is_practice: boolean }> = {};
     if (quizIds.length > 0) {
-      const { data: qs } = await supabase
+      // Metadata only (no questions), limited to quizzes this student attempted.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: qs } = await supabaseAdmin
         .from("quizzes")
         .select("id, title, question_count, is_practice")
         .in("id", quizIds);
       for (const q of qs || []) quizMap[q.id] = { title: q.title, question_count: q.question_count, is_practice: q.is_practice };
     }
+
 
     // My own practice quizzes
     const { data: practice } = await supabase

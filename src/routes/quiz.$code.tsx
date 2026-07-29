@@ -22,11 +22,13 @@ import { Button } from "@/components/ui/button";
 import {
   getQuizByShareCode,
   getQuiz,
+  getQuizAnswerKey,
   startOrResumeAttempt,
   saveAttemptProgress,
   submitAttempt,
   type QuizQuestion,
 } from "@/lib/quiz.functions";
+
 
 export const Route = createFileRoute("/quiz/$code")({
   head: () => ({ meta: [{ title: "Quiz — Lecture Lab AI" }] }),
@@ -84,12 +86,14 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
   const { code } = useParams({ from: "/quiz/$code" });
   const byCodeFn = useServerFn(getQuizByShareCode);
   const byIdFn = useServerFn(getQuiz);
+  const answerKeyFn = useServerFn(getQuizAnswerKey);
   const startFn = useServerFn(startOrResumeAttempt);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+
 
   useEffect(() => {
     let active = true;
@@ -113,7 +117,24 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-
+  // Answers are withheld by the server until the attempt is submitted.
+  useEffect(() => {
+    if (!quiz || !attempt?.is_completed) return;
+    if (quiz.questions.some((q) => q.correct_answer)) return;
+    let active = true;
+    answerKeyFn({ data: { quizId: quiz.id } })
+      .then((res) => {
+        if (!active) return;
+        setQuiz((prev) =>
+          prev ? { ...prev, questions: res.questions as QuizQuestion[] } : prev,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz?.id, attempt?.is_completed]);
 
 
   const beginAttempt = async () => {
