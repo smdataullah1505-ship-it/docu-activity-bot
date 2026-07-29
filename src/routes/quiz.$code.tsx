@@ -86,12 +86,14 @@ function QuizRunner({ role }: { role: "teacher" | "student" }) {
   const { code } = useParams({ from: "/quiz/$code" });
   const byCodeFn = useServerFn(getQuizByShareCode);
   const byIdFn = useServerFn(getQuiz);
+  const answerKeyFn = useServerFn(getQuizAnswerKey);
   const startFn = useServerFn(startOrResumeAttempt);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+
 
   useEffect(() => {
     let active = true;
