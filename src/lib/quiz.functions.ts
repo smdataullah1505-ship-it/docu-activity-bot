@@ -495,12 +495,15 @@ export const getStudentDashboard = createServerFn({ method: "POST" })
     const quizIds = Array.from(new Set((attempts || []).map((a) => a.quiz_id)));
     let quizMap: Record<string, { title: string; question_count: number | null; is_practice: boolean }> = {};
     if (quizIds.length > 0) {
-      const { data: qs } = await supabase
+      // Metadata only (no questions), limited to quizzes this student attempted.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: qs } = await supabaseAdmin
         .from("quizzes")
         .select("id, title, question_count, is_practice")
         .in("id", quizIds);
       for (const q of qs || []) quizMap[q.id] = { title: q.title, question_count: q.question_count, is_practice: q.is_practice };
     }
+
 
     // My own practice quizzes
     const { data: practice } = await supabase
