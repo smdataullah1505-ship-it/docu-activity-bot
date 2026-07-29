@@ -22,11 +22,13 @@ import { Button } from "@/components/ui/button";
 import {
   getQuizByShareCode,
   getQuiz,
+  getQuizAnswerKey,
   startOrResumeAttempt,
   saveAttemptProgress,
   submitAttempt,
   type QuizQuestion,
 } from "@/lib/quiz.functions";
+
 
 export const Route = createFileRoute("/quiz/$code")({
   head: () => ({ meta: [{ title: "Quiz — Lecture Lab AI" }] }),
