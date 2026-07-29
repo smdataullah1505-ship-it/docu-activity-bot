@@ -314,12 +314,15 @@ export const submitAttempt = createServerFn({ method: "POST" })
     if (!attempt) throw new Error("Attempt not found");
     if (attempt.is_completed) throw new Error("Attempt already submitted");
 
-    const { data: quiz } = await supabase
+    // Grading needs the answer key, which students cannot read directly.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: quiz } = await supabaseAdmin
       .from("quizzes")
       .select("questions")
       .eq("id", attempt.quiz_id)
       .maybeSingle();
     if (!quiz) throw new Error("Quiz not found");
+
 
     const questions = quiz.questions as unknown as QuizQuestion[];
     let score = 0;
