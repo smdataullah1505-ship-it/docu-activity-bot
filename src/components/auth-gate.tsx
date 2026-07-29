@@ -380,11 +380,12 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
 
   const verify = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: "email" });
+    const { error } = await verifyEmailCode(email, otp);
     setLoading(false);
     if (error) return toast.error(error.message);
     toast.success("Welcome to Lecture Lab AI!");
   };
+
 
   return (
     <div className="p-6">
