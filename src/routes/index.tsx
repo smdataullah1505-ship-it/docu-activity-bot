@@ -1097,8 +1097,13 @@ function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
                   {diff}
                 </span>
                 <span className="text-xs text-muted-foreground">Q{i + 1}</span>
+                {sql && (q as AnyObj).questionType ? (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {String((q as AnyObj).questionType)}
+                  </span>
+                ) : null}
               </div>
-              <p className="font-medium">{q.question}</p>
+              {sql ? <QuestionText text={q.question} /> : <p className="font-medium">{q.question}</p>}
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 {q.options?.map((opt, j) => {
                   const selected = picked === opt;
