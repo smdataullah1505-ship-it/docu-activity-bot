@@ -1077,7 +1077,7 @@ function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
 
   return (
     <Section
-      title={`MCQs (${all.length})`}
+      title={`${sql ? "SQL MCQs" : "MCQs"} (${all.length})`}
       right={
         submitted ? (
           <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
