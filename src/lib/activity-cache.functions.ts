@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const LookupSchema = z.object({
   topic: z.string().min(1).max(500),
@@ -16,16 +15,14 @@ const SaveSchema = LookupSchema.extend({
 });
 
 export const getCachedActivity = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data) => LookupSchema.parse(data))
-  .handler(async ({ data, context }) => {
-    const supabase = context.supabase;
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const difficulty = data.difficulty ?? null;
     const questionCount = data.questionCount ?? null;
-    let q = supabase
+    let q = supabaseAdmin
       .from("saved_activities")
       .select("generated_json, created_at")
-      .eq("user_id", context.userId)
       .eq("topic", data.topic)
       .eq("activity_type", data.activityType)
       .order("created_at", { ascending: false })
@@ -45,19 +42,16 @@ export const getCachedActivity = createServerFn({ method: "POST" })
   });
 
 export const saveCachedActivity = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data) => SaveSchema.parse(data))
-  .handler(async ({ data, context }) => {
-    const supabase = context.supabase;
-    const userId = context.userId;
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const difficulty = data.difficulty ?? null;
     const questionCount = data.questionCount ?? null;
 
     if (data.replace) {
-      let del = supabase
+      let del = supabaseAdmin
         .from("saved_activities")
         .delete()
-        .eq("user_id", userId)
         .eq("topic", data.topic)
         .eq("activity_type", data.activityType);
       del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
@@ -67,8 +61,7 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
       await del;
     }
 
-    const { error } = await supabase.from("saved_activities").insert({
-      user_id: userId,
+    const { error } = await supabaseAdmin.from("saved_activities").insert({
       document_name: data.documentName,
       topic: data.topic,
       activity_type: data.activityType,
