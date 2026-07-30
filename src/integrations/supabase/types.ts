@@ -14,213 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      activity_feedback: {
-        Row: {
-          activity_id: string
-          comment: string | null
-          created_at: string
-          id: string
-          rating: number | null
-          user_id: string
-        }
-        Insert: {
-          activity_id: string
-          comment?: string | null
-          created_at?: string
-          id?: string
-          rating?: number | null
-          user_id: string
-        }
-        Update: {
-          activity_id?: string
-          comment?: string | null
-          created_at?: string
-          id?: string
-          rating?: number | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "activity_feedback_activity_id_fkey"
-            columns: ["activity_id"]
-            isOneToOne: false
-            referencedRelation: "saved_activities"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      documents: {
-        Row: {
-          extracted_topics: Json | null
-          file_name: string
-          file_type: string | null
-          file_url: string | null
-          id: string
-          uploaded_at: string
-          user_id: string
-        }
-        Insert: {
-          extracted_topics?: Json | null
-          file_name: string
-          file_type?: string | null
-          file_url?: string | null
-          id?: string
-          uploaded_at?: string
-          user_id: string
-        }
-        Update: {
-          extracted_topics?: Json | null
-          file_name?: string
-          file_type?: string | null
-          file_url?: string | null
-          id?: string
-          uploaded_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          display_name: string | null
-          email: string | null
-          id: string
-          role: Database["public"]["Enums"]["user_role"]
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          display_name?: string | null
-          email?: string | null
-          id: string
-          role?: Database["public"]["Enums"]["user_role"]
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          display_name?: string | null
-          email?: string | null
-          id?: string
-          role?: Database["public"]["Enums"]["user_role"]
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      quiz_attempts: {
-        Row: {
-          answers: Json
-          completed_at: string | null
-          current_question_index: number
-          id: string
-          is_completed: boolean
-          quiz_id: string
-          score: number | null
-          started_at: string
-          student_id: string
-          suspicious_events: Json
-          time_taken: number | null
-          updated_at: string
-        }
-        Insert: {
-          answers?: Json
-          completed_at?: string | null
-          current_question_index?: number
-          id?: string
-          is_completed?: boolean
-          quiz_id: string
-          score?: number | null
-          started_at?: string
-          student_id: string
-          suspicious_events?: Json
-          time_taken?: number | null
-          updated_at?: string
-        }
-        Update: {
-          answers?: Json
-          completed_at?: string | null
-          current_question_index?: number
-          id?: string
-          is_completed?: boolean
-          quiz_id?: string
-          score?: number | null
-          started_at?: string
-          student_id?: string
-          suspicious_events?: Json
-          time_taken?: number | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quiz_attempts_quiz_id_fkey"
-            columns: ["quiz_id"]
-            isOneToOne: false
-            referencedRelation: "quizzes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      quizzes: {
-        Row: {
-          created_at: string
-          creator_id: string
-          creator_role: Database["public"]["Enums"]["user_role"]
-          difficulty: string | null
-          document_id: string | null
-          id: string
-          is_practice: boolean
-          is_published: boolean
-          question_count: number | null
-          questions: Json
-          share_code: string | null
-          time_limit: number | null
-          title: string
-          topic: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          creator_id: string
-          creator_role: Database["public"]["Enums"]["user_role"]
-          difficulty?: string | null
-          document_id?: string | null
-          id?: string
-          is_practice?: boolean
-          is_published?: boolean
-          question_count?: number | null
-          questions: Json
-          share_code?: string | null
-          time_limit?: number | null
-          title: string
-          topic: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          creator_id?: string
-          creator_role?: Database["public"]["Enums"]["user_role"]
-          difficulty?: string | null
-          document_id?: string | null
-          id?: string
-          is_practice?: boolean
-          is_published?: boolean
-          question_count?: number | null
-          questions?: Json
-          share_code?: string | null
-          time_limit?: number | null
-          title?: string
-          topic?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quizzes_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       saved_activities: {
         Row: {
           activity_type: string
@@ -232,7 +25,7 @@ export type Database = {
           id: string
           question_count: number | null
           topic: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           activity_type: string
@@ -244,7 +37,7 @@ export type Database = {
           id?: string
           question_count?: number | null
           topic: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           activity_type?: string
@@ -256,31 +49,19 @@ export type Database = {
           id?: string
           question_count?: number | null
           topic?: string
-          user_id?: string
+          user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "saved_activities_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_user_role: {
-        Args: { _user_id: string }
-        Returns: Database["public"]["Enums"]["user_role"]
-      }
-      is_teacher: { Args: { _user_id: string }; Returns: boolean }
+      [_ in never]: never
     }
     Enums: {
-      user_role: "teacher" | "student"
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -407,8 +188,6 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {
-      user_role: ["teacher", "student"],
-    },
+    Enums: {},
   },
 } as const

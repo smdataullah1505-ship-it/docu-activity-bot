@@ -1,417 +1,2305 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
 import {
-  Loader2,
-  PlusCircle,
-  BookOpen,
-  TrendingUp,
-  Users,
-  ClipboardList,
-  Wand2,
-  Hash,
-  Trophy,
-  Clock,
+  Upload,
+  FileText,
+  Sparkles,
+  RefreshCw,
+  ListChecks,
+  Brain,
+  Lightbulb,
+  MessageSquare,
+  Hammer,
+  Globe2,
+  HelpCircle,
   AlertTriangle,
+  Printer,
+  ArrowRight,
+  Loader2,
+  Check,
+  X,
+  FileType2,
+  Database,
+  Eye,
+  ImageIcon,
+  BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ReferenceLine,
 } from "recharts";
-import { AuthGate } from "@/components/auth-gate";
-import { AppHeader } from "@/components/app-header";
-import { useSession, useProfile } from "@/lib/use-profile";
+import { extractTopics, generateActivity } from "@/lib/activities.functions";
+import {
+  generateImageQuestion,
+  generateChartActivity,
+  generateBeforeAfter,
+} from "@/lib/visual-activities.functions";
+import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
+import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
+import { extractTextFromFile } from "@/lib/parse-document";
+import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
-import { getTeacherDashboard, getStudentDashboard } from "@/lib/quiz.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — Lecture Lab AI" },
+      { title: "Lecture Lab AI — Classroom Activity Generator" },
       {
         name: "description",
-        content: "Your teaching or learning dashboard. Generate activities, create quizzes, track progress.",
+        content:
+          "Upload PDF, DOCX, PPTX, or TXT lecture material and instantly generate MCQs, flashcards, debates, SQL interview questions and more — no login required.",
       },
+      { property: "og:title", content: "Lecture Lab AI — Classroom Activity Generator" },
+      {
+        property: "og:description",
+        content:
+          "Upload lecture material and generate 14 kinds of classroom activities instantly. No sign-up needed.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: () => (
-    <AuthGate>
-      <DashboardRouter />
-    </AuthGate>
-  ),
+  component: LectureLab,
 });
 
-function DashboardRouter() {
-  const { session } = useSession();
-  const { profile, loading } = useProfile(session);
-  if (!session || loading || !profile) {
-    return (
-      <div className="min-h-screen grid place-items-center">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+type Step = "upload" | "topics" | "activity" | "results";
+
+type ActivityKey =
+  | "quickRecap"
+  | "mcqs"
+  | "fillBlanks"
+  | "flashcards"
+  | "socraticQuestions"
+  | "debates"
+  | "workshops"
+  | "examples"
+  | "reverseQuestions"
+  | "findMistakes"
+  | "imageQuestion"
+  | "chartInterpreter"
+  | "beforeAfter"
+  | "sqlMcqs";
+
+
+
+const MODES: {
+  key: ActivityKey;
+  title: string;
+  blurb: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { key: "quickRecap", title: "Quick Recap", blurb: "Last-5-minutes revision pack", icon: RefreshCw },
+  { key: "mcqs", title: "MCQ Generator", blurb: "Easy / Medium / Hard MCQs", icon: ListChecks },
+  { key: "fillBlanks", title: "Fill in the Blanks", blurb: "Terminology-driven blanks", icon: FileType2 },
+  { key: "flashcards", title: "Flashcards", blurb: "Term & concept cards", icon: Brain },
+  { key: "socraticQuestions", title: "Socratic Questions", blurb: "Why / how / reasoning", icon: Lightbulb },
+  { key: "debates", title: "Debate Prompts", blurb: "Seminar discussion topics", icon: MessageSquare },
+  { key: "workshops", title: "Workshops", blurb: "In-class simulations", icon: Hammer },
+  { key: "examples", title: "Real-World Examples", blurb: "Applied scenarios", icon: Globe2 },
+  { key: "reverseQuestions", title: "Reverse Questioning", blurb: "Questions students may ask", icon: HelpCircle },
+  { key: "findMistakes", title: "Find the Mistake", blurb: "Spot & correct errors", icon: AlertTriangle },
+  { key: "imageQuestion", title: "Image Question", blurb: "AI-generated diagram + question", icon: ImageIcon },
+  { key: "chartInterpreter", title: "Chart Interpreter", blurb: "Read & analyse data from the doc", icon: BarChart3 },
+  { key: "beforeAfter", title: "Before / After", blurb: "Interactive cause–effect slider", icon: SlidersHorizontal },
+  { key: "sqlMcqs", title: "SQL MCQ", blurb: "Query-based SQL interview MCQs", icon: Database },
+];
+
+type Difficulty = "easy" | "medium" | "hard" | "mixed";
+type QCount = 5 | 10 | 20;
+
+type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
+
+const STORAGE_KEY = "lecturelab.session.v2";
+
+type PersistedState = {
+  step: Step;
+  fileName: string;
+  documentText: string;
+  topics: string[];
+  selectedTopic: string;
+  selectedMode: ActivityKey | null;
+  mcqDifficulty: Difficulty;
+  mcqCount: QCount;
+  sqlDifficulty: Difficulty;
+  sqlCount: QCount;
+};
+
+function loadPersisted(): Partial<PersistedState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Partial<PersistedState>;
+  } catch {
+    return {};
+  }
+}
+
+function LectureLab() {
+  const persisted = useMemo(() => loadPersisted(), []);
+  const [step, setStep] = useState<Step>(persisted.step ?? "upload");
+  const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
+  const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
+  const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
+  const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
+  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
+
+  const [mcqDifficulty, setMcqDifficulty] = useState<Difficulty>(
+    persisted.mcqDifficulty ?? "mixed",
+  );
+  const [mcqCount, setMcqCount] = useState<QCount>(persisted.mcqCount ?? 10);
+  const [sqlDifficulty, setSqlDifficulty] = useState<Difficulty>(
+    persisted.sqlDifficulty ?? "mixed",
+  );
+  const [sqlCount, setSqlCount] = useState<QCount>(persisted.sqlCount ?? 10);
+
+  const [parsing, setParsing] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
+
+  // Persist session state to localStorage so refreshes / remounts don't lose progress.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: PersistedState = {
+        step,
+        fileName,
+        documentText,
+        topics,
+        selectedTopic,
+        selectedMode,
+        mcqDifficulty,
+        mcqCount,
+        sqlDifficulty,
+        sqlCount,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota / serialization errors are non-fatal */
+    }
+  }, [
+    step,
+    fileName,
+    documentText,
+    topics,
+    selectedTopic,
+    selectedMode,
+    mcqDifficulty,
+    mcqCount,
+    sqlDifficulty,
+    sqlCount,
+  ]);
+
+  const extractTopicsFn = useServerFn(extractTopics);
+  const generateActivityFn = useServerFn(generateActivity);
+  const generateImageQuestionFn = useServerFn(generateImageQuestion);
+  const generateChartActivityFn = useServerFn(generateChartActivity);
+  const generateBeforeAfterFn = useServerFn(generateBeforeAfter);
+  const generateSqlMcqsFn = useServerFn(generateSqlMcqs);
+  const saveCachedActivityFn = useServerFn(saveCachedActivity);
+  const getCachedActivityFn = useServerFn(getCachedActivity);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      try {
+        setParsing(true);
+        setFileName(file.name);
+        const text = await extractTextFromFile(file);
+        if (!text || text.trim().length < 50) {
+          toast.error("Couldn't read enough text from this file. Try another document.");
+          setParsing(false);
+          return;
+        }
+        setDocumentText(text);
+        setParsing(false);
+        setExtracting(true);
+        const { topics } = await extractTopicsFn({ data: { documentText: text } });
+        setTopics(topics);
+        setExtracting(false);
+        setStep("topics");
+      } catch (err) {
+        setParsing(false);
+        setExtracting(false);
+        const msg = err instanceof Error ? err.message : "Failed to process the file.";
+        toast.error(msg);
+      }
+    },
+    [extractTopicsFn],
+  );
+
+  const onPickFile = () => fileInputRef.current?.click();
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const reset = () => {
+    setStep("upload");
+    setFileName("");
+    setDocumentText("");
+    setTopics([]);
+    setSelectedTopic("");
+    setSelectedMode(null);
+    setResult(null);
+    setCacheMeta(null);
+    setGenerationError(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
+    if (!selectedTopic) return;
+    try {
+      setSelectedMode(mode);
+      setGenerating(true);
+      setGenerationError(null);
+      setResult(null);
+      setCacheMeta(null);
+      setStep("results");
+
+      const difficulty =
+        mode === "mcqs" ? mcqDifficulty : mode === "sqlMcqs" ? sqlDifficulty : null;
+      const questionCount = mode === "mcqs" ? mcqCount : mode === "sqlMcqs" ? sqlCount : null;
+
+      // 1. Check cache first
+      if (!forceRegenerate) {
+        try {
+          const cached = await getCachedActivityFn({
+            data: {
+              topic: selectedTopic,
+              activityType: mode,
+              difficulty,
+              questionCount,
+            },
+          });
+          if (cached.hit) {
+            setResult(cached.generatedJson as Record<string, unknown>);
+            setCacheMeta({ source: "cache", createdAt: cached.createdAt });
+            setGenerating(false);
+            return;
+          }
+        } catch {
+          /* cache lookup failed — fall through to fresh generation */
+        }
+      }
+
+      // 2. Otherwise generate fresh
+      const options: Record<string, unknown> = {};
+      if (mode === "mcqs") {
+        options.difficulty = mcqDifficulty;
+        options.count = mcqCount;
+      }
+      if (mode === "reverseQuestions") {
+        // Auto-use the selected topic as the concept — no separate input needed.
+        options.concept = selectedTopic;
+      }
+      let json: string;
+      if (mode === "imageQuestion") {
+        ({ json } = await generateImageQuestionFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else if (mode === "chartInterpreter") {
+        ({ json } = await generateChartActivityFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else if (mode === "beforeAfter") {
+        ({ json } = await generateBeforeAfterFn({
+          data: { documentText, topic: selectedTopic },
+        }));
+      } else if (mode === "sqlMcqs") {
+        ({ json } = await generateSqlMcqsFn({
+          data: { topic: selectedTopic, count: sqlCount, difficulty: sqlDifficulty },
+        }));
+      } else {
+        ({ json } = await generateActivityFn({
+          data: { documentText, topic: selectedTopic, mode, options },
+        }));
+      }
+      const parsed = JSON.parse(json);
+
+      // 3. Save to cache (best-effort)
+      const nowIso = new Date().toISOString();
+      try {
+        await saveCachedActivityFn({
+          data: {
+            documentName: fileName,
+            topic: selectedTopic,
+            activityType: mode,
+            difficulty,
+            questionCount,
+            generatedJson: parsed,
+            replace: forceRegenerate,
+          },
+        });
+      } catch (e) {
+        console.warn("Cache save failed", e);
+      }
+
+      setResult(parsed);
+      setCacheMeta({ source: "fresh", createdAt: nowIso });
+      setGenerating(false);
+    } catch (err) {
+      setGenerating(false);
+      const msg = err instanceof Error ? err.message : "Generation failed.";
+      setGenerationError(msg);
+      toast.error(msg);
+    }
+  };
+
+  return (
+    <div className="min-h-screen">
+      <Toaster richColors position="top-center" />
+      <Header onReset={reset} />
+
+      <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6">
+        <Stepper step={step} />
+
+        {step === "upload" && (
+          <UploadStep
+            parsing={parsing}
+            extracting={extracting}
+            dragOver={dragOver}
+            setDragOver={setDragOver}
+            onPickFile={onPickFile}
+            onDrop={onDrop}
+            fileInputRef={fileInputRef}
+            handleFile={handleFile}
+            fileName={fileName}
+          />
+        )}
+
+        {step === "topics" && (
+          <TopicsStep
+            fileName={fileName}
+            topics={topics}
+            selectedTopic={selectedTopic}
+            onSelect={(t) => {
+              setSelectedTopic(t);
+              setStep("activity");
+            }}
+            onBack={() => setStep("upload")}
+          />
+        )}
+
+        {step === "activity" && (
+          <ActivityStep
+            topic={selectedTopic}
+            mcqDifficulty={mcqDifficulty}
+            setMcqDifficulty={setMcqDifficulty}
+            mcqCount={mcqCount}
+            setMcqCount={setMcqCount}
+            sqlDifficulty={sqlDifficulty}
+            setSqlDifficulty={setSqlDifficulty}
+            sqlCount={sqlCount}
+            setSqlCount={setSqlCount}
+            onRun={(m) => runGeneration(m, false)}
+            onBack={() => setStep("topics")}
+          />
+        )}
+
+        {step === "results" && (
+          <ResultsStep
+            topic={selectedTopic}
+            mode={selectedMode}
+            generating={generating}
+            error={generationError}
+            result={result}
+            cacheMeta={cacheMeta}
+            onBack={() => setStep("activity")}
+            onRegenerate={() => selectedMode && runGeneration(selectedMode, true)}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Header({ onReset }: { onReset: () => void }) {
+  return (
+    <header className="no-print border-b border-border/60 bg-card/60 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <button onClick={onReset} className="flex items-center gap-3 text-left">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-hero text-primary-foreground shadow-md">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Lecture Lab AI</h1>
+            <p className="text-xs text-muted-foreground">Classroom activities from your lecture material</p>
+          </div>
+        </button>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            onReset();
+          }}
+          className="text-sm font-medium text-muted-foreground hover:text-foreground"
+        >
+          New session
+        </a>
       </div>
+    </header>
+  );
+}
+
+const STEPS: { key: Step; label: string }[] = [
+  { key: "upload", label: "Upload" },
+  { key: "topics", label: "Topics" },
+  { key: "activity", label: "Activity" },
+  { key: "results", label: "Results" },
+];
+
+function Stepper({ step }: { step: Step }) {
+  const idx = STEPS.findIndex((s) => s.key === step);
+  const current = STEPS[idx];
+  return (
+    <div className="no-print mb-8">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Step {idx + 1} of {STEPS.length} · {current?.label}
+      </p>
+      <ol className="flex items-center gap-2 overflow-x-auto py-2">
+        {STEPS.map((s, i) => {
+          const active = i === idx;
+          const done = i < idx;
+          return (
+            <li key={s.key} className="flex items-center gap-2">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition ${
+                  done
+                    ? "bg-primary text-primary-foreground"
+                    : active
+                      ? "bg-accent text-accent-foreground ring-4 ring-accent/30"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {done ? <Check className="h-4 w-4" /> : i + 1}
+              </div>
+              <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                {s.label}
+              </span>
+              {i < STEPS.length - 1 && <span className="mx-1 h-px w-6 bg-border sm:w-10" />}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function UploadStep({
+  parsing,
+  extracting,
+  dragOver,
+  setDragOver,
+  onPickFile,
+  onDrop,
+  fileInputRef,
+  handleFile,
+  fileName,
+}: {
+  parsing: boolean;
+  extracting: boolean;
+  dragOver: boolean;
+  setDragOver: (v: boolean) => void;
+  onPickFile: () => void;
+  onDrop: (e: React.DragEvent) => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  handleFile: (file: File) => void;
+  fileName: string;
+}) {
+  const busy = parsing || extracting;
+  return (
+    <section className="grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:items-center">
+      <div>
+        <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/40 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent-foreground">
+          <Sparkles className="h-3.5 w-3.5" /> Grounded in your material
+        </p>
+        <h2 className="text-4xl font-bold leading-tight sm:text-5xl">
+          Turn lecture notes into <span className="italic text-primary">classroom-ready</span> activities.
+        </h2>
+        <p className="mt-4 max-w-xl text-base text-muted-foreground">
+          Upload your PPT, PDF, DOCX, or TXT. Lecture Lab AI extracts the topics and generates MCQs, flashcards,
+          debates, simulations and more — using only what's in your document.
+        </p>
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          className={`mt-8 rounded-2xl border-2 border-dashed p-8 transition ${
+            dragOver ? "border-primary bg-primary/5" : "border-border bg-card/60"
+          } ${busy ? "pointer-events-none opacity-80" : ""}`}
+        >
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl gradient-hero text-primary-foreground shadow-md">
+              {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
+            </div>
+            <div>
+              <p className="text-base font-semibold">
+                {parsing
+                  ? `Reading ${fileName}…`
+                  : extracting
+                    ? "Extracting topics from your material…"
+                    : "Drop your lecture file here"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">PDF, DOCX, PPTX or TXT · up to ~20MB</p>
+            </div>
+            <Button onClick={onPickFile} disabled={busy} size="lg">
+              <Upload className="mr-2 h-4 w-4" /> Choose file
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.pptx,.txt,.md"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <aside className="surface-elevated p-6">
+        <h3 className="text-lg font-semibold">What you'll get</h3>
+        <ul className="mt-4 grid gap-3 text-sm">
+          {MODES.slice(0, 6).map((m) => (
+            <li key={m.key} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-accent/40 text-accent-foreground">
+                <m.icon className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="font-medium">{m.title}</p>
+                <p className="text-muted-foreground">{m.blurb}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-5 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+          Everything is generated strictly from your uploaded document — no external knowledge.
+        </p>
+      </aside>
+    </section>
+  );
+}
+
+function TopicsStep({
+  fileName,
+  topics,
+  selectedTopic,
+  onSelect,
+  onBack,
+}: {
+  fileName: string;
+  topics: string[];
+  selectedTopic: string;
+  onSelect: (t: string) => void;
+  onBack: () => void;
+}) {
+  return (
+    <section>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold">Pick a topic</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Extracted from <span className="font-medium text-foreground">{fileName}</span> · {topics.length} topics
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onBack}>
+          <X className="mr-2 h-4 w-4" /> Use a different file
+        </Button>
+      </div>
+
+      {topics.length === 0 ? (
+        <div className="surface-card p-8 text-center text-muted-foreground">
+          No topics were extracted. Try a more detailed document.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {topics.map((t, i) => {
+            const active = t === selectedTopic;
+            return (
+              <button
+                key={`${t}-${i}`}
+                onClick={() => onSelect(t)}
+                className={`group flex items-start gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition hover:border-primary hover:shadow-md ${
+                  active ? "border-primary ring-2 ring-primary/30" : "border-border"
+                }`}
+              >
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/40 text-xs font-bold text-accent-foreground">
+                  {i + 1}
+                </span>
+                <span className="flex-1 text-sm font-medium leading-snug">{t}</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ActivityStep({
+  topic,
+  mcqDifficulty,
+  setMcqDifficulty,
+  mcqCount,
+  setMcqCount,
+  sqlDifficulty,
+  setSqlDifficulty,
+  sqlCount,
+  setSqlCount,
+  onRun,
+  onBack,
+}: {
+  topic: string;
+  mcqDifficulty: Difficulty;
+  setMcqDifficulty: (v: Difficulty) => void;
+  mcqCount: QCount;
+  setMcqCount: (v: QCount) => void;
+  sqlDifficulty: Difficulty;
+  setSqlDifficulty: (v: Difficulty) => void;
+  sqlCount: QCount;
+  setSqlCount: (v: QCount) => void;
+  onRun: (mode: ActivityKey) => void;
+  onBack: () => void;
+}) {
+  const [hovered, setHovered] = useState<ActivityKey | null>(null);
+  return (
+    <section>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Selected topic</p>
+          <h2 className="text-2xl font-bold">{topic}</h2>
+        </div>
+        <Button variant="ghost" onClick={onBack}>
+          ← Change topic
+        </Button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              onMouseEnter={() => setHovered(m.key)}
+              onClick={() => onRun(m.key)}
+              className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl gradient-hero text-primary-foreground shadow">
+                <m.icon className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <p className="text-base font-semibold">{m.title}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{m.blurb}</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground" />
+            </button>
+          ))}
+        </div>
+
+        <aside className="surface-elevated h-fit p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Options</h3>
+
+          <div className="mt-4">
+            <p className="text-sm font-medium">MCQ difficulty</p>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {(["easy", "medium", "hard", "mixed"] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setMcqDifficulty(d)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize transition ${
+                    mcqDifficulty === d
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-sm font-medium">MCQ count</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {([5, 10, 20] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setMcqCount(n)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold transition ${
+                    mcqCount === n
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-sm font-medium">SQL MCQ difficulty</p>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {(["easy", "medium", "hard", "mixed"] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setSqlDifficulty(d)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize transition ${
+                    sqlDifficulty === d
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-sm font-medium">SQL MCQ count</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {([5, 10, 20] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSqlCount(n)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold transition ${
+                    sqlCount === n
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              SQL MCQs are general interview-style questions about the topic — they do not use the
+              uploaded document.
+            </p>
+          </div>
+
+          <div className="mt-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Reverse Questioning</span> automatically uses
+            your selected topic: <span className="italic">"{topic}"</span>.
+          </div>
+
+
+
+
+          {hovered && (
+            <p className="mt-5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              Hovering: <span className="font-medium text-foreground">{MODES.find((m) => m.key === hovered)?.title}</span>
+            </p>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function ResultsStep({
+  topic,
+  mode,
+  generating,
+  error,
+  result,
+  cacheMeta,
+  onBack,
+  onRegenerate,
+}: {
+  topic: string;
+  mode: ActivityKey | null;
+  generating: boolean;
+  error: string | null;
+  result: Record<string, unknown> | null;
+  cacheMeta: CacheMeta;
+  onBack: () => void;
+  onRegenerate: () => void;
+}) {
+  const meta = MODES.find((m) => m.key === mode);
+  return (
+    <section>
+      <div className="no-print mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {meta?.title} · {topic}
+          </p>
+          <h2 className="text-2xl font-bold">Your activity</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onBack}>
+            ← Back
+          </Button>
+          <Button variant="outline" onClick={onRegenerate} disabled={generating}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+          </Button>
+          <Button onClick={() => window.print()} disabled={generating || !result}>
+            <Printer className="mr-2 h-4 w-4" /> Print / Save PDF
+          </Button>
+        </div>
+      </div>
+
+      {cacheMeta && !generating && !error && (
+        <div
+          className={`no-print mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+            cacheMeta.source === "cache"
+              ? "bg-accent/30 text-accent-foreground"
+              : "bg-primary/15 text-primary"
+          }`}
+        >
+          {cacheMeta.source === "cache" ? (
+            <>
+              <Database className="h-3.5 w-3.5" /> 📦 Loaded from cache
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3.5 w-3.5" /> ✨ Newly generated
+            </>
+          )}
+          <span className="text-muted-foreground">· {new Date(cacheMeta.createdAt).toLocaleString()}</span>
+        </div>
+      )}
+
+      {generating && (
+        <div className="surface-card flex items-center gap-4 p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <div>
+            <p className="font-medium">Generating activity from your material…</p>
+            <p className="text-sm text-muted-foreground">This usually takes a few seconds.</p>
+          </div>
+        </div>
+      )}
+
+      {!generating && error && (
+        <div className="surface-card border border-danger/40 bg-danger/5 p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-danger" />
+            <div className="flex-1">
+              <p className="font-semibold text-danger">Generation failed</p>
+              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              <Button className="mt-4" onClick={onRegenerate}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!generating && !error && result && mode && (
+        <ResultRenderer mode={mode} data={result} topic={topic} />
+      )}
+    </section>
+  );
+}
+
+function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="surface-card mb-5 p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold">{title}</h3>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+type AnyObj = Record<string, unknown>;
+
+function asArr<T = AnyObj>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function ResultRenderer({ mode, data, topic }: { mode: ActivityKey; data: AnyObj; topic: string }) {
+  const payload = (data[mode] ?? data) as AnyObj;
+
+  return (
+    <div className="results">
+      <div className="surface-elevated mb-6 p-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Topic</p>
+        <p className="text-xl font-bold">{topic}</p>
+      </div>
+
+      {mode === "quickRecap" && <QuickRecapView data={payload} />}
+      {mode === "mcqs" && <MCQView data={payload} />}
+      {mode === "fillBlanks" && <FillBlanksView data={asArr(payload) ?? asArr(data.fillBlanks)} />}
+      {mode === "flashcards" && <FlashcardsView data={asArr(payload) ?? asArr(data.flashcards)} />}
+      {mode === "socraticQuestions" && (
+        <SocraticView data={asArr(payload) ?? asArr(data.socraticQuestions)} />
+      )}
+      {mode === "debates" && <DebatesView data={asArr(payload) ?? asArr(data.debates)} />}
+      {mode === "workshops" && <WorkshopsView data={asArr(payload) ?? asArr(data.workshops)} />}
+      {mode === "examples" && <ExamplesView data={asArr(payload) ?? asArr(data.examples)} />}
+      {mode === "reverseQuestions" && (
+        <ReverseView data={asArr(payload) ?? asArr(data.reverseQuestions)} />
+      )}
+      {mode === "findMistakes" && <FindMistakesView data={asArr(payload) ?? asArr(data.findMistakes)} />}
+      {mode === "imageQuestion" && <ImageQuestionView data={data} />}
+      {mode === "chartInterpreter" && <ChartInterpreterView data={data} />}
+      {mode === "beforeAfter" && <BeforeAfterView data={data} />}
+      {mode === "sqlMcqs" && <MCQView data={payload} sql />}
+    </div>
+  );
+}
+
+/* ---------- Reusable answer-reveal helpers ---------- */
+
+function RevealAnswer({
+  label = "Show answer",
+  children,
+}: {
+  label?: string;
+  children: React.ReactNode;
+}) {
+  const [shown, setShown] = useState(false);
+  if (!shown) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="no-print mt-3"
+        onClick={() => setShown(true)}
+      >
+        <Eye className="mr-2 h-4 w-4" /> {label}
+      </Button>
     );
   }
+  return <div className="mt-3">{children}</div>;
+}
+
+/* ---------- Quick Recap (interactive) ---------- */
+
+function QuickRecapView({ data }: { data: AnyObj }) {
+  const keyPoints = asArr<string>(data.keyPoints);
+  const concepts = asArr<{ concept: string; explanation: string }>(data.importantConcepts);
+  const oral = asArr<{ question: string; answer: string }>(data.oralQuestions);
+  const triggers = asArr<string>(data.memoryTriggers);
   return (
-    <div className="min-h-screen bg-slate-50">
-      <AppHeader role={profile.role} displayName={profile.display_name} email={profile.email} />
-      {profile.role === "teacher" ? (
-        <TeacherDashboard displayName={profile.display_name} />
-      ) : (
-        <StudentDashboard displayName={profile.display_name} />
+    <>
+      <Section title="Key Points">
+        <ul className="list-disc space-y-2 pl-5 text-sm">
+          {keyPoints.map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+      </Section>
+      <Section title="Important Concepts">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {concepts.map((c, i) => (
+            <div key={i} className="rounded-lg border border-border bg-muted/30 p-4">
+              <p className="font-semibold">{c.concept}</p>
+              <RevealAnswer label="Reveal explanation">
+                <p className="text-sm text-muted-foreground">{c.explanation}</p>
+              </RevealAnswer>
+            </div>
+          ))}
+        </div>
+      </Section>
+      <Section title="Quick Oral Questions">
+        <ol className="space-y-3">
+          {oral.map((q, i) => (
+            <li key={i} className="rounded-lg border border-border p-4">
+              <p className="font-medium">
+                <span className="mr-2 text-muted-foreground">Q{i + 1}.</span>
+                {q.question}
+              </p>
+              <RevealAnswer>
+                <p className="text-sm text-success">
+                  <span className="font-semibold">Answer:</span> {q.answer}
+                </p>
+              </RevealAnswer>
+            </li>
+          ))}
+        </ol>
+      </Section>
+      <Section title="Memory Triggers">
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {triggers.map((t, i) => (
+            <li
+              key={i}
+              className="rounded-lg border border-dashed border-accent/60 bg-accent/10 px-3 py-2 text-sm"
+            >
+              💡 {t}
+            </li>
+          ))}
+        </ul>
+      </Section>
+    </>
+  );
+}
+
+/* ---------- MCQ (interactive with score) ---------- */
+
+function difficultyColor(d: "easy" | "medium" | "hard"): string {
+  if (d === "easy") return "bg-[oklch(0.92_0.1_145)] text-[oklch(0.3_0.12_145)]";
+  if (d === "medium") return "bg-[oklch(0.92_0.12_70)] text-[oklch(0.35_0.15_55)]";
+  return "bg-[oklch(0.92_0.1_25)] text-[oklch(0.4_0.18_25)]";
+}
+
+type MCQ = {
+  question: string;
+  options: string[];
+  correct: string;
+  explanation: string;
+  reference?: string;
+};
+
+function QuestionText({ text }: { text: string }) {
+  const parts = String(text ?? "").split(/```(?:sql|text|plaintext)?\n?/i);
+  return (
+    <div className="space-y-2">
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <pre
+            key={i}
+            className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs leading-relaxed"
+          >
+            {part.replace(/\n$/, "")}
+          </pre>
+        ) : part.trim() ? (
+          <p key={i} className="whitespace-pre-wrap font-medium">
+            {part.trim()}
+          </p>
+        ) : null,
       )}
     </div>
   );
 }
 
-// ============== TEACHER ==============
-function TeacherDashboard({ displayName }: { displayName: string | null }) {
-  const fetchFn = useServerFn(getTeacherDashboard);
-  const [data, setData] = useState<Awaited<ReturnType<typeof getTeacherDashboard>> | null>(null);
-  const [loading, setLoading] = useState(true);
+function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
+  const all = useMemo(() => {
+    const items: { q: MCQ; diff: "easy" | "medium" | "hard"; idx: number }[] = [];
+    (["easy", "medium", "hard"] as const).forEach((diff) => {
+      asArr<MCQ>(data[diff]).forEach((q, i) => items.push({ q, diff, idx: i }));
+    });
+    return items;
+  }, [data]);
 
-  useEffect(() => {
-    fetchFn()
-      .then((d) => setData(d))
-      .finally(() => setLoading(false));
-  }, [fetchFn]);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [submitted, setSubmitted] = useState(false);
 
-  return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Welcome back, {displayName || "Teacher"} 👋</h1>
-        <p className="text-slate-600 mt-1">Manage your quizzes and track student progress.</p>
+  if (all.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        No {sql ? "SQL MCQs" : "MCQs"} were generated for this topic.
+
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard
-          icon={<ClipboardList className="h-5 w-5" />}
-          label="Total Quizzes"
-          value={data?.totalQuizzes ?? 0}
-          color="bg-indigo-100 text-indigo-700"
-          loading={loading}
-        />
-        <StatCard
-          icon={<Users className="h-5 w-5" />}
-          label="Students"
-          value={data?.totalStudents ?? 0}
-          color="bg-fuchsia-100 text-fuchsia-700"
-          loading={loading}
-        />
-        <StatCard
-          icon={<Trophy className="h-5 w-5" />}
-          label="Avg Score"
-          value={data?.avgScore != null ? `${Math.round(data.avgScore)}%` : "—"}
-          color="bg-emerald-100 text-emerald-700"
-          loading={loading}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <QuickAction
-          to="/quiz/new"
-          icon={<PlusCircle className="h-5 w-5" />}
-          title="Create Quiz"
-          desc="Build a quiz from a document"
-        />
-        <QuickAction
-          to="/analytics"
-          icon={<TrendingUp className="h-5 w-5" />}
-          title="View Analytics"
-          desc="See per-quiz student results"
-        />
-        <QuickAction
-          to="/lab"
-          icon={<Wand2 className="h-5 w-5" />}
-          title="Generate Activities"
-          desc="13 activity modes from any document"
-        />
-      </div>
-
-      <div className="bg-white border rounded-2xl shadow-sm">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="font-semibold">Recent Student Activity</h2>
-        </div>
-        <div className="p-4">
-          {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-          ) : !data?.recent.length ? (
-            <p className="text-sm text-slate-500">
-              No attempts yet. Create a quiz and share the code with your students.
-            </p>
-          ) : (
-            <ul className="divide-y">
-              {data.recent.map((r, i) => (
-                <li key={i} className="py-3 flex items-center justify-between gap-4 text-sm">
-                  <div className="flex-1 truncate">
-                    <div className="font-medium truncate">
-                      {data.quizMap[r.quiz_id] || "Quiz"}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {r.completed_at ? new Date(r.completed_at).toLocaleString() : "In progress"}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    {r.score != null ? `Score: ${r.score}` : "—"}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="text-center">
-        <Link to="/analytics" className="text-sm text-indigo-600 hover:underline">
-          View all quizzes & detailed analytics →
-        </Link>
-      </div>
-    </div>
+  const score = all.reduce(
+    (acc, { q }, i) => acc + (submitted && answers[i] === q.correct ? 1 : 0),
+    0,
   );
-}
-
-// ============== STUDENT ==============
-function StudentDashboard({ displayName }: { displayName: string | null }) {
-  const fetchFn = useServerFn(getStudentDashboard);
-  const [data, setData] = useState<Awaited<ReturnType<typeof getStudentDashboard>> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [code, setCode] = useState("");
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    fetchFn()
-      .then((d) => setData(d))
-      .finally(() => setLoading(false));
-  }, [fetchFn]);
-
-  const joinByCode = () => {
-    const c = code.trim().toUpperCase();
-    if (c.length < 4) return;
-    navigate({ to: "/quiz/$code", params: { code: c } });
-  };
+  const allAnswered = all.every((_, i) => answers[i] != null);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Hi, {displayName || "Student"} 🎓</h1>
-        <p className="text-slate-600 mt-1">Attempt quizzes, practice independently, track your growth.</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard
-          icon={<ClipboardList className="h-5 w-5" />}
-          label="Quizzes Attempted"
-          value={data?.totalAttempted ?? 0}
-          color="bg-indigo-100 text-indigo-700"
-          loading={loading}
-        />
-        <StatCard
-          icon={<Trophy className="h-5 w-5" />}
-          label="Avg Score"
-          value={data?.avgPct != null ? `${Math.round(data.avgPct)}%` : "—"}
-          color="bg-emerald-100 text-emerald-700"
-          loading={loading}
-        />
-        <StatCard
-          icon={<Clock className="h-5 w-5" />}
-          label="Pending"
-          value={data?.pendingCount ?? 0}
-          color="bg-amber-100 text-amber-700"
-          loading={loading}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-white border rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 font-semibold">
-            <Hash className="h-4 w-4 text-indigo-600" /> Join Quiz by Code
-          </div>
-          <p className="text-xs text-slate-500 mt-1">Enter the 6-character code your teacher shared.</p>
-          <div className="mt-3 flex gap-2">
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
-              placeholder="ABC123"
-              className="flex-1 px-3 py-2 border rounded-lg uppercase tracking-widest font-mono focus:ring-2 focus:ring-indigo-200 outline-none"
-            />
-            <Button onClick={joinByCode} className="bg-indigo-600 hover:bg-indigo-700">
-              Join
-            </Button>
-          </div>
-        </div>
-        <QuickAction
-          to="/quiz/new"
-          icon={<BookOpen className="h-5 w-5" />}
-          title="Create Practice Quiz"
-          desc="Self-test on any uploaded document"
-        />
-      </div>
-
-      <div className="bg-white border rounded-2xl shadow-sm p-4">
-        <h2 className="font-semibold mb-3">Performance Trend</h2>
-        {loading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-        ) : !data?.trend.length ? (
-          <p className="text-sm text-slate-500">Complete a few quizzes to see your trend.</p>
-        ) : (
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef" />
-                <XAxis dataKey="index" />
-                <YAxis domain={[0, 100]} unit="%" />
-                <Tooltip />
-                <Line type="monotone" dataKey="pct" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white border rounded-2xl shadow-sm">
-          <div className="p-4 border-b font-semibold">Quiz History</div>
-          <div className="p-4">
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-            ) : !data?.attempts.length ? (
-              <p className="text-sm text-slate-500">No attempts yet.</p>
-            ) : (
-              <ul className="divide-y">
-                {data.attempts.slice(0, 8).map((a) => {
-                  const meta = data.quizMap[a.quiz_id];
-                  const qc = meta?.question_count || 1;
-                  const pct = a.score != null ? Math.round((a.score / qc) * 100) : null;
-                  const events = Array.isArray(a.suspicious_events) ? a.suspicious_events.length : 0;
+    <Section
+      title={`${sql ? "SQL MCQs" : "MCQs"} (${all.length})`}
+      right={
+        submitted ? (
+          <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+            Score: {score} / {all.length}
+          </span>
+        ) : null
+      }
+    >
+      <ol className="space-y-4">
+        {all.map(({ q, diff }, i) => {
+          const picked = answers[i];
+          const isRight = picked === q.correct;
+          return (
+            <li key={i} className="rounded-lg border border-border p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${difficultyColor(diff)}`}>
+                  {diff}
+                </span>
+                <span className="text-xs text-muted-foreground">Q{i + 1}</span>
+                {sql && (q as AnyObj).questionType ? (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {String((q as AnyObj).questionType)}
+                  </span>
+                ) : null}
+              </div>
+              {sql ? <QuestionText text={q.question} /> : <p className="font-medium">{q.question}</p>}
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {q.options?.map((opt, j) => {
+                  const selected = picked === opt;
+                  const showCorrect = submitted && opt === q.correct;
+                  const showWrong = submitted && selected && opt !== q.correct;
                   return (
-                    <li key={a.id} className="py-3 flex items-center justify-between gap-3 text-sm">
-                      <div className="flex-1 truncate">
-                        <div className="font-medium truncate">{meta?.title || "Quiz"}</div>
-                        <div className="text-xs text-slate-500 flex items-center gap-2">
-                          {meta?.is_practice && (
-                            <span className="px-1.5 py-0.5 bg-slate-100 rounded">Practice</span>
-                          )}
-                          {a.completed_at
-                            ? new Date(a.completed_at).toLocaleDateString()
-                            : "In progress"}
-                          {events > 0 && (
-                            <span
-                              className="inline-flex items-center gap-1 text-amber-600"
-                              title="Tab-switch events"
-                            >
-                              <AlertTriangle className="h-3 w-3" /> {events}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {a.is_completed ? (
-                        <span className="font-semibold">{pct}%</span>
-                      ) : (
-                        <Link
-                          to="/quiz/$code"
-                          params={{ code: a.quiz_id }}
-                          search={{ aid: a.id } as never}
-                          className="text-xs text-indigo-600 hover:underline"
-                        >
-                          Resume →
-                        </Link>
-                      )}
+                    <li key={j}>
+                      <button
+                        type="button"
+                        disabled={submitted}
+                        onClick={() => setAnswers((a) => ({ ...a, [i]: opt }))}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
+                          showCorrect
+                            ? "border-success bg-success/10 font-medium"
+                            : showWrong
+                              ? "border-danger bg-danger/10"
+                              : selected
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-primary/50"
+                        } ${submitted ? "cursor-default" : "cursor-pointer"}`}
+                      >
+                        <span className="mr-2 text-muted-foreground">{String.fromCharCode(65 + j)}.</span>
+                        {opt}
+                        {showCorrect && <Check className="ml-2 inline h-4 w-4 text-success" />}
+                        {showWrong && <X className="ml-2 inline h-4 w-4 text-danger" />}
+                      </button>
                     </li>
                   );
                 })}
               </ul>
-            )}
-          </div>
-        </div>
+              {submitted && (
+                <div className="mt-3 space-y-2">
+                  <div
+                    className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+                      isRight ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                    }`}
+                  >
+                    {isRight ? (
+                      <Check className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <X className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <span>
+                      {isRight
+                        ? "Correct!"
+                        : "Incorrect."}{" "}
+                      <span className="font-normal text-foreground">
+                        Correct answer: <span className="font-semibold">{q.correct}</span>
+                      </span>
+                    </span>
+                  </div>
+                  {q.explanation && (
+                    <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground">
+                      <span className="font-semibold">Explanation:</span> {q.explanation}
+                    </p>
+                  )}
+                  {q.reference && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Reference:</span> {q.reference}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
 
-        <div className="bg-white border rounded-2xl shadow-sm">
-          <div className="p-4 border-b font-semibold">My Practice Quizzes</div>
-          <div className="p-4">
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-            ) : !data?.practiceQuizzes.length ? (
-              <p className="text-sm text-slate-500">
-                You haven&apos;t created any practice quizzes yet.{" "}
-                <Link to="/quiz/new" className="text-indigo-600 hover:underline">
-                  Create one →
-                </Link>
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {data.practiceQuizzes.map((q) => (
-                  <li key={q.id} className="py-3 flex items-center justify-between gap-3 text-sm">
-                    <div className="flex-1 truncate">
-                      <div className="font-medium truncate">{q.title}</div>
-                      <div className="text-xs text-slate-500">{q.question_count} questions</div>
-                    </div>
-                    <Link
-                      to="/quiz/$code"
-                      params={{ code: q.id }}
-                      className="text-xs text-indigo-600 hover:underline"
-                    >
-                      Take →
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+      <div className="no-print mt-5 flex flex-wrap items-center gap-3">
+        {!submitted ? (
+          <Button onClick={() => setSubmitted(true)} disabled={!allAnswered}>
+            <Check className="mr-2 h-4 w-4" /> Submit answers
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setAnswers({});
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+        {!submitted && !allAnswered && (
+          <span className="text-sm text-muted-foreground">
+            Answer all {all.length} questions to submit.
+          </span>
+        )}
       </div>
-    </div>
+    </Section>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  color,
-  loading,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  color: string;
-  loading?: boolean;
-}) {
-  return (
-    <div className="bg-white border rounded-2xl shadow-sm p-4 flex items-center gap-3">
-      <div className={`h-10 w-10 grid place-items-center rounded-xl ${color}`}>{icon}</div>
-      <div>
-        <div className="text-xs uppercase tracking-wider text-slate-500">{label}</div>
-        <div className="text-2xl font-bold">
-          {loading ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : value}
-        </div>
-      </div>
-    </div>
-  );
-}
+/* ---------- Fill in the Blanks (interactive) ---------- */
 
-function QuickAction({
-  to,
-  icon,
-  title,
-  desc,
-}: {
-  to: string;
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
+function FillBlanksView({ data }: { data: AnyObj[] }) {
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [checked, setChecked] = useState(false);
+
+  if (data.length === 0) {
+    return <div className="surface-card p-6 text-center text-muted-foreground">No items generated.</div>;
+  }
+
+  const norm = (s: string) => s.trim().toLowerCase();
+  const score = data.reduce(
+    (acc, q, i) => acc + (checked && norm(answers[i] || "") === norm(String(q.answer)) ? 1 : 0),
+    0,
+  );
+
   return (
-    <Link
-      to={to}
-      className="block bg-white border rounded-2xl shadow-sm p-4 hover:border-indigo-300 hover:shadow transition"
+    <Section
+      title="Fill in the Blanks"
+      right={
+        checked ? (
+          <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-semibold text-primary">
+            Score: {score} / {data.length}
+          </span>
+        ) : null
+      }
     >
-      <div className="flex items-center gap-2 font-semibold">
-        <span className="text-indigo-600">{icon}</span> {title}
+      <ol className="space-y-3">
+        {data.map((q, i) => {
+          const parts = String(q.sentence).split(/_{2,}/);
+          const ans = answers[i] || "";
+          const correct = checked && norm(ans) === norm(String(q.answer));
+          return (
+            <li key={i} className="rounded-lg border border-border p-4">
+              <p className="flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="mr-1 text-muted-foreground">{i + 1}.</span>
+                {parts.map((p, idx) => (
+                  <span key={idx} className="contents">
+                    <span>{p}</span>
+                    {idx < parts.length - 1 && (
+                      <input
+                        type="text"
+                        value={ans}
+                        disabled={checked}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [i]: e.target.value }))}
+                        className={`mx-1 inline-block min-w-[8rem] rounded border px-2 py-0.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 ${
+                          checked
+                            ? correct
+                              ? "border-success bg-success/10"
+                              : "border-danger bg-danger/10"
+                            : "border-input bg-card"
+                        }`}
+                        placeholder="answer"
+                      />
+                    )}
+                  </span>
+                ))}
+              </p>
+              {checked && (
+                <div className="mt-2 space-y-1">
+                  <p className={`text-sm font-semibold ${correct ? "text-success" : "text-danger"}`}>
+                    {correct ? "✓ Correct" : `✗ Correct answer: ${String(q.answer)}`}
+                  </p>
+                  {q.explanation ? (
+                    <p className="text-xs text-muted-foreground">{String(q.explanation)}</p>
+                  ) : null}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <div className="no-print mt-5">
+        {!checked ? (
+          <Button onClick={() => setChecked(true)}>
+            <Check className="mr-2 h-4 w-4" /> Check answers
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setChecked(false);
+              setAnswers({});
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
       </div>
-      <p className="text-xs text-slate-500 mt-1">{desc}</p>
-    </Link>
+    </Section>
+  );
+}
+
+/* ---------- Flashcards (already interactive) ---------- */
+
+function FlashcardsView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Flashcards">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {data.map((c, i) => (
+          <Flashcard key={i} front={String(c.front)} back={String(c.back)} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function Flashcard({ front, back }: { front: string; back: string }) {
+  const [flipped, setFlipped] = useState(false);
+  return (
+    <button
+      onClick={() => setFlipped((v) => !v)}
+      className="group relative h-40 rounded-xl border border-border bg-card p-5 text-left shadow-sm transition hover:border-primary hover:shadow-md"
+    >
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {flipped ? "Definition" : "Term"}
+      </p>
+      <p className={`mt-2 ${flipped ? "text-sm" : "text-lg font-semibold"}`}>{flipped ? back : front}</p>
+      <span className="absolute bottom-3 right-4 text-xs text-muted-foreground">
+        {flipped ? "Tap to flip back" : "Tap to flip"}
+      </span>
+    </button>
+  );
+}
+
+/* ---------- Socratic (answer hidden by default) ---------- */
+
+function SocraticView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Socratic Questions">
+      <ol className="space-y-4">
+        {data.map((q, i) => (
+          <SocraticItem
+            key={i}
+            index={i}
+            question={String(q.question)}
+            hint={q.hint ? String(q.hint) : ""}
+            idealAnswer={q.idealAnswer ? String(q.idealAnswer) : ""}
+          />
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+function SocraticItem({
+  index,
+  question,
+  hint,
+  idealAnswer,
+}: {
+  index: number;
+  question: string;
+  hint: string;
+  idealAnswer: string;
+}) {
+  const [text, setText] = useState("");
+  const [shown, setShown] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {question}
+      </p>
+      {hint ? (
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
+        </p>
+      ) : null}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Type your answer here…"
+        disabled={shown}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!shown ? (
+          <Button size="sm" onClick={() => setShown(true)} disabled={!idealAnswer}>
+            <Eye className="mr-2 h-4 w-4" /> Show answer
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setShown(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {shown && idealAnswer && (
+        <div className="mt-3 space-y-2">
+          {text.trim() && (
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Your answer
+              </p>
+              <p className="mt-1 whitespace-pre-line">{text}</p>
+            </div>
+          )}
+          <div className="rounded-md bg-success/10 px-3 py-2 text-sm">
+            <p className="font-semibold text-success">Ideal answer from the document:</p>
+            <p className="mt-1 text-foreground">{idealAnswer}</p>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ThinkAnswerItem({
+  index,
+  prompt,
+  reveal,
+  placeholder = "Type your thinking…",
+}: {
+  index: number;
+  prompt: string;
+  reveal: React.ReactNode;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState("");
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {prompt}
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={2}
+        placeholder={placeholder}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      {reveal && <RevealAnswer label="Show ideal answer">{reveal}</RevealAnswer>}
+    </li>
+  );
+}
+
+/* ---------- Debates ---------- */
+
+function DebatesView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Debate Prompts">
+      <ul className="space-y-5">
+        {data.map((d, i) => (
+          <DebateItem
+            key={i}
+            index={i}
+            topic={String(d.topic)}
+            context={d.context ? String(d.context) : ""}
+            argsFor={asArr<string>(d.argumentsFor).map(String)}
+            argsAgainst={asArr<string>(d.argumentsAgainst).map(String)}
+            keyPoints={asArr<string>(d.keyPoints).map(String)}
+            sampleArguments={d.sampleArguments ? String(d.sampleArguments) : ""}
+          />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function DebateItem({
+  index,
+  topic,
+  context,
+  argsFor,
+  argsAgainst,
+  keyPoints,
+  sampleArguments,
+}: {
+  index: number;
+  topic: string;
+  context: string;
+  argsFor: string[];
+  argsAgainst: string[];
+  keyPoints: string[];
+  sampleArguments: string;
+}) {
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Debate #{index + 1}
+      </p>
+      <p className="mt-1 text-lg font-bold">{topic}</p>
+      {context && (
+        <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Context:</span> {context}
+        </p>
+      )}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-md border border-success/30 bg-success/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-success">Arguments FOR</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsFor.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsFor.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+        <div className="rounded-md border border-danger/30 bg-danger/5 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-danger">Arguments AGAINST</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {argsAgainst.length === 0 ? (
+              <li className="list-none text-muted-foreground">No arguments generated.</li>
+            ) : (
+              argsAgainst.map((a, j) => <li key={j}>{a}</li>)
+            )}
+          </ul>
+        </div>
+      </div>
+      {keyPoints.length > 0 && (
+        <div className="mt-3 rounded-md bg-accent/10 p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-accent-foreground">
+            Key Points to Consider
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {keyPoints.map((k, j) => (
+              <li key={j}>{k}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Write your debate response or stance…"
+        disabled={submitted}
+        className="no-print mt-4 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2 flex gap-2">
+        {!submitted ? (
+          <Button size="sm" onClick={() => setSubmitted(true)} disabled={!sampleArguments}>
+            <Eye className="mr-2 h-4 w-4" /> Show sample arguments
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {submitted && sampleArguments && (
+        <div className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-sm">
+          <p className="font-semibold text-primary">Sample Arguments:</p>
+          <p className="mt-1 text-foreground">{sampleArguments}</p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ---------- Workshops ---------- */
+
+function WorkshopsView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Workshops & Simulations">
+      <div className="space-y-4">
+        {data.map((w, i) => (
+          <div key={i} className="rounded-lg border border-border p-5">
+            <p className="text-lg font-bold">{String(w.title)}</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Instructions
+                </p>
+                <p className="mt-1 whitespace-pre-line text-sm">{String(w.instructions)}</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Student task
+                  </p>
+                  <p className="mt-1 text-sm">{String(w.task)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Expected outcome
+                  </p>
+                  <RevealAnswer label="Reveal expected outcome">
+                    <p className="text-sm">{String(w.outcome)}</p>
+                  </RevealAnswer>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/* ---------- Examples ---------- */
+
+function ExamplesView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Real-World Examples">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {data.map((e, i) => (
+          <div key={i} className="rounded-lg border border-border p-4">
+            <p className="font-semibold">{String(e.scenario)}</p>
+            <RevealAnswer label="Show explanation & application">
+              <p className="text-sm">{String(e.explanation)}</p>
+              <p className="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Where used:</span> {String(e.application)}
+              </p>
+            </RevealAnswer>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/* ---------- Reverse Questions ---------- */
+
+function ReverseView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Reverse Questions">
+      <ol className="space-y-3">
+        {data.map((q, i) => (
+          <ThinkAnswerItem
+            key={i}
+            index={i}
+            prompt={String(q.question)}
+            reveal={
+              q.context ? (
+                <p className="text-xs text-muted-foreground">{String(q.context)}</p>
+              ) : null
+            }
+          />
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+/* ---------- Find the Mistake (interactive) ---------- */
+
+function FindMistakesView({ data }: { data: AnyObj[] }) {
+  return (
+    <Section title="Find the Mistake">
+      <ol className="space-y-3">
+        {data.map((m, i) => (
+          <FindMistakeItem
+            key={i}
+            index={i}
+            wrong={String(m.wrongStatement)}
+            hint={m.hint ? String(m.hint) : ""}
+            correctStatement={m.correctStatement ? String(m.correctStatement) : ""}
+            explanation={String(m.correctExplanation ?? "")}
+          />
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
+}
+
+function overlapScore(a: string, b: string): number {
+  const at = new Set(tokenize(a));
+  const bt = tokenize(b);
+  if (bt.length === 0 || at.size === 0) return 0;
+  const hits = bt.filter((w) => at.has(w)).length;
+  return hits / Math.max(bt.length, 1);
+}
+
+function FindMistakeItem({
+  index,
+  wrong,
+  hint,
+  correctStatement,
+  explanation,
+}: {
+  index: number;
+  wrong: string;
+  hint: string;
+  correctStatement: string;
+  explanation: string;
+}) {
+  const [text, setText] = useState("");
+  const [checked, setChecked] = useState(false);
+
+  const target = correctStatement || explanation;
+  const score = overlapScore(target, text);
+  const isCorrect = checked && score >= 0.35;
+
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium text-danger">
+        <FileText className="mr-1 inline h-4 w-4" />
+        <span className="mr-2 text-muted-foreground">#{index + 1}</span>
+        {wrong}
+      </p>
+      {hint ? (
+        <p className="mt-2 rounded-md bg-accent/20 px-3 py-2 text-sm text-accent-foreground">
+          <span className="font-semibold">💡 Hint:</span> {hint}
+        </p>
+      ) : null}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Write the corrected statement…"
+        disabled={checked}
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2">
+        {!checked ? (
+          <Button size="sm" onClick={() => setChecked(true)} disabled={!text.trim()}>
+            <Check className="mr-2 h-4 w-4" /> Submit correction
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setChecked(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {checked && (
+        <div className="mt-3 space-y-2">
+          <div
+            className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm font-semibold ${
+              isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {isCorrect ? (
+              <Check className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <X className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {isCorrect
+                ? "Your correction matches the key idea from the document."
+                : "Not quite — your correction is missing the key ideas from the document."}
+            </span>
+          </div>
+          {correctStatement && (
+            <p className="rounded-md bg-success/10 px-3 py-2 text-sm">
+              <span className="font-semibold text-success">Correct statement:</span> {correctStatement}
+            </p>
+          )}
+          {explanation && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <span className="font-semibold">Why the original was wrong:</span> {explanation}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Match score: {Math.round(score * 100)}% keyword overlap with the document's correction.
+          </p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ============================================================
+ *  Image Question
+ * ============================================================ */
+
+type ImageQuestion = {
+  question: string;
+  answer: string;
+  explanation: string;
+  documentReference?: string;
+};
+
+function ImageQuestionView({ data }: { data: AnyObj }) {
+  const empty = Boolean(data.empty);
+  const message = data.message ? String(data.message) : "";
+  const image = data.image ? String(data.image) : "";
+  const imageDescription = data.imageDescription ? String(data.imageDescription) : "";
+  const questions = asArr<ImageQuestion>(data.questions);
+
+  const [active, setActive] = useState(0);
+  const [submitted, setSubmitted] = useState<Record<number, boolean>>({});
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  if (empty || questions.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {message || "This topic does not contain enough information for an image question. Please pick another topic."}
+      </div>
+    );
+  }
+
+  const q = questions[active];
+  const done = submitted[active];
+  const userAnswer = answers[active] || "";
+  const isCorrect = done && overlapScore(String(q.answer), userAnswer) >= 0.35;
+
+  return (
+    <Section title={`Image Question · ${active + 1} of ${questions.length}`}>
+      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+        <div className="surface-card overflow-hidden bg-muted/30">
+          {image ? (
+            <img
+              src={image}
+              alt={imageDescription || "Generated educational diagram"}
+              className="h-auto w-full select-none"
+              onCopy={(e) => e.preventDefault()}
+            />
+          ) : (
+            <div className="flex aspect-video items-center justify-center p-6 text-center text-sm text-muted-foreground">
+              <div>
+                <ImageIcon className="mx-auto mb-2 h-6 w-6" />
+                {imageDescription || "Image could not be generated. Use the description below."}
+              </div>
+            </div>
+          )}
+          {imageDescription && (
+            <p className="border-t border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+              {imageDescription}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Question {active + 1}
+          </p>
+          <p className="text-base font-semibold">{q.question}</p>
+          <textarea
+            value={userAnswer}
+            disabled={done}
+            onChange={(e) => setAnswers((a) => ({ ...a, [active]: e.target.value }))}
+            onPaste={(e) => e.preventDefault()}
+            rows={3}
+            placeholder="Type your answer based on the image…"
+            className="no-print w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          <div className="no-print flex flex-wrap gap-2">
+            {!done ? (
+              <Button
+                size="sm"
+                onClick={() => setSubmitted((s) => ({ ...s, [active]: true }))}
+                disabled={!userAnswer.trim()}
+              >
+                <Check className="mr-2 h-4 w-4" /> Submit answer
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSubmitted((s) => ({ ...s, [active]: false }));
+                  setAnswers((a) => ({ ...a, [active]: "" }));
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" /> Try again
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setActive((i) => Math.max(0, i - 1))}
+              disabled={active === 0}
+            >
+              ← Prev
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setActive((i) => Math.min(questions.length - 1, i + 1))}
+              disabled={active >= questions.length - 1}
+            >
+              Next →
+            </Button>
+          </div>
+          {done && (
+            <div className="space-y-2">
+              <div
+                className={`rounded-md px-3 py-2 text-sm font-semibold ${
+                  isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                }`}
+              >
+                {isCorrect ? "✅ Correct!" : `❌ Incorrect. Correct answer: ${q.answer}`}
+              </div>
+              {q.explanation && (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm">
+                  <span className="font-semibold">Explanation:</span> {q.explanation}
+                </p>
+              )}
+              {q.documentReference && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold">From the document:</span> {q.documentReference}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/* ============================================================
+ *  Chart Interpreter
+ * ============================================================ */
+
+const CHART_COLORS = [
+  "oklch(0.55 0.18 260)",
+  "oklch(0.65 0.18 145)",
+  "oklch(0.7 0.16 70)",
+  "oklch(0.6 0.18 25)",
+  "oklch(0.6 0.15 200)",
+  "oklch(0.55 0.2 320)",
+  "oklch(0.5 0.18 100)",
+  "oklch(0.65 0.16 340)",
+];
+
+type ChartQuestion = { question: string; answer: string; explanation: string };
+
+function ChartInterpreterView({ data }: { data: AnyObj }) {
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No chart data available for this topic in the document.")}
+      </div>
+    );
+  }
+  const chartType = String(data.chartType || "bar") as "bar" | "line" | "pie";
+  const title = String(data.title || "Chart");
+  const xLabel = String(data.xLabel || "");
+  const yLabel = String(data.yLabel || "");
+  const sourceQuote = data.sourceQuote ? String(data.sourceQuote) : "";
+  const points = asArr<{ name: unknown; value: unknown }>(data.data).map((p) => ({
+    name: String(p.name),
+    value: Number(p.value),
+  }));
+  const questions = asArr<ChartQuestion>(data.questions);
+
+  return (
+    <>
+      <Section title={title}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            {chartType === "pie" ? (
+              <PieChart>
+                <Pie
+                  data={points}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={110}
+                  label
+                >
+                  {points.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip />
+                <Legend />
+              </PieChart>
+            ) : chartType === "line" ? (
+              <LineChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="name" label={xLabel ? { value: xLabel, position: "insideBottom", offset: -5 } : undefined} />
+                <YAxis label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft" } : undefined} />
+                <RechartsTooltip />
+                <Line type="monotone" dataKey="value" stroke={CHART_COLORS[0]} strokeWidth={2} dot />
+              </LineChart>
+            ) : (
+              <BarChart data={points}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="name" label={xLabel ? { value: xLabel, position: "insideBottom", offset: -5 } : undefined} />
+                <YAxis label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft" } : undefined} />
+                <RechartsTooltip />
+                <Bar dataKey="value" fill={CHART_COLORS[0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+        {sourceQuote && (
+          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">From the document:</span> {sourceQuote}
+          </p>
+        )}
+      </Section>
+
+      <Section title="Analytical questions">
+        <ol className="space-y-3">
+          {questions.map((q, i) => (
+            <ChartQuestionItem key={i} index={i} q={q} />
+          ))}
+        </ol>
+      </Section>
+    </>
+  );
+}
+
+function ChartQuestionItem({ index, q }: { index: number; q: ChartQuestion }) {
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const isCorrect = submitted && overlapScore(String(q.answer), text) >= 0.3;
+  return (
+    <li className="rounded-lg border border-border p-4">
+      <p className="font-medium">
+        <span className="mr-2 text-muted-foreground">Q{index + 1}.</span>
+        {q.question}
+      </p>
+      <textarea
+        value={text}
+        disabled={submitted}
+        onChange={(e) => setText(e.target.value)}
+        onPaste={(e) => e.preventDefault()}
+        rows={2}
+        placeholder="Your answer…"
+        className="no-print mt-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="no-print mt-2">
+        {!submitted ? (
+          <Button size="sm" onClick={() => setSubmitted(true)} disabled={!text.trim()}>
+            <Check className="mr-2 h-4 w-4" /> Submit
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSubmitted(false);
+              setText("");
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
+        )}
+      </div>
+      {submitted && (
+        <div className="mt-3 space-y-2">
+          <div
+            className={`rounded-md px-3 py-2 text-sm font-semibold ${
+              isCorrect ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {isCorrect ? "✅ Matches the document" : `Correct answer: ${q.answer}`}
+          </div>
+          {q.explanation && (
+            <p className="rounded-md bg-muted px-3 py-2 text-sm">
+              <span className="font-semibold">Explanation:</span> {q.explanation}
+            </p>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ============================================================
+ *  Before / After Visualization
+ * ============================================================ */
+
+type BeforePoint = { cause: number; effect: number; note?: string };
+
+function BeforeAfterView({ data }: { data: AnyObj }) {
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No causal relationship found for this topic in the document.")}
+      </div>
+    );
+  }
+  const title = String(data.title || "Cause–Effect");
+  const causeName = String(data.causeName || "Input");
+  const causeUnit = String(data.causeUnit || "");
+  const effectName = String(data.effectName || "Output");
+  const effectUnit = String(data.effectUnit || "");
+  const min = Number(data.min ?? 0);
+  const max = Number(data.max ?? 100);
+  const step = Number(data.step ?? 1) || 1;
+  const defaultVal = Number(data.default ?? min);
+  const relationship = String(data.relationship || "");
+  const documentReference = data.documentReference ? String(data.documentReference) : "";
+  const insight = data.insight ? String(data.insight) : "";
+  const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
+    cause: Number(p.cause),
+    effect: Number(p.effect),
+    note: p.note ? String(p.note) : "",
+  }));
+  const points = rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+
+  const [value, setValue] = useState<number>(defaultVal);
+
+  const current = useMemo(() => {
+    if (points.length === 0) return null;
+    // nearest point
+    let best = points[0];
+    let bestDist = Math.abs(best.cause - value);
+    for (const p of points) {
+      const d = Math.abs(p.cause - value);
+      if (d < bestDist) {
+        best = p;
+        bestDist = d;
+      }
+    }
+    return best;
+  }, [points, value]);
+
+  if (points.length === 0) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        No data points were generated for this relationship.
+      </div>
+    );
+  }
+
+  return (
+    <Section title={title}>
+      <p className="text-sm text-muted-foreground">{relationship}</p>
+
+      <div className="mt-5 grid gap-6 lg:grid-cols-[3fr_2fr]">
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis
+                dataKey="cause"
+                type="number"
+                domain={[min, max]}
+                label={{
+                  value: `${causeName}${causeUnit ? ` (${causeUnit})` : ""}`,
+                  position: "insideBottom",
+                  offset: -5,
+                }}
+              />
+              <YAxis
+                label={{
+                  value: `${effectName}${effectUnit ? ` (${effectUnit})` : ""}`,
+                  angle: -90,
+                  position: "insideLeft",
+                }}
+              />
+              <RechartsTooltip />
+              <Line
+                type="monotone"
+                dataKey="effect"
+                stroke={CHART_COLORS[0]}
+                strokeWidth={2}
+                dot
+              />
+              {current && (
+                <ReferenceLine
+                  x={current.cause}
+                  stroke={CHART_COLORS[3]}
+                  strokeDasharray="4 4"
+                  label={{ value: "now", position: "top", fill: "currentColor", fontSize: 11 }}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between text-sm">
+              <label className="font-semibold">
+                {causeName}
+                {causeUnit ? ` (${causeUnit})` : ""}
+              </label>
+              <span className="font-mono text-primary">{value}</span>
+            </div>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              onChange={(e) => setValue(Number(e.target.value))}
+              className="mt-2 w-full accent-[oklch(0.55_0.18_260)]"
+            />
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+              <span>{min}</span>
+              <span>{max}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setValue(defaultVal)}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" /> Reset to baseline
+            </Button>
+          </div>
+
+          {current && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Current {effectName}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-primary">
+                {current.effect}
+                {effectUnit ? <span className="ml-1 text-sm text-muted-foreground">{effectUnit}</span> : null}
+              </p>
+              {current.note && (
+                <p className="mt-2 text-sm" onCopy={(e) => e.preventDefault()}>
+                  {current.note}
+                </p>
+              )}
+            </div>
+          )}
+
+          {insight && (
+            <details className="rounded-md border border-border bg-card p-3 text-sm">
+              <summary className="cursor-pointer font-semibold">Explain</summary>
+              <p className="mt-2 text-muted-foreground" onCopy={(e) => e.preventDefault()}>
+                {insight}
+              </p>
+              {documentReference && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <span className="font-semibold">From the document:</span> {documentReference}
+                </p>
+              )}
+            </details>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }
