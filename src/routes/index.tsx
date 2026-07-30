@@ -50,12 +50,10 @@ import {
   generateBeforeAfter,
 } from "@/lib/visual-activities.functions";
 import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
+import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
-import { AuthGate } from "@/components/auth-gate";
-import { AppHeader } from "@/components/app-header";
-import { useSession, useProfile } from "@/lib/use-profile";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -64,30 +62,20 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Upload PDF, DOCX, PPTX, or TXT lecture material. Generate interactive quizzes, flashcards, debates, simulations, and more — grounded in your own content.",
+          "Upload PDF, DOCX, PPTX, or TXT lecture material and instantly generate MCQs, flashcards, debates, SQL interview questions and more — no login required.",
       },
+      { property: "og:title", content: "Lecture Lab AI — Classroom Activity Generator" },
+      {
+        property: "og:description",
+        content:
+          "Upload lecture material and generate 14 kinds of classroom activities instantly. No sign-up needed.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: () => (
-    <AuthGate>
-      <LabWithHeader />
-    </AuthGate>
-  ),
+  component: LectureLab,
 });
-
-function LabWithHeader() {
-  const { session } = useSession();
-  const { profile } = useProfile(session);
-  return (
-    <>
-      {profile && (
-        <AppHeader role={profile.role} displayName={profile.display_name} email={profile.email} />
-      )}
-      <LectureLab />
-    </>
-  );
-}
-
 
 type Step = "upload" | "topics" | "activity" | "results";
 
@@ -104,7 +92,8 @@ type ActivityKey =
   | "findMistakes"
   | "imageQuestion"
   | "chartInterpreter"
-  | "beforeAfter";
+  | "beforeAfter"
+  | "sqlMcqs";
 
 
 
