@@ -774,10 +774,54 @@ function ActivityStep({
             </div>
           </div>
 
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-sm font-medium">SQL MCQ difficulty</p>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {(["easy", "medium", "hard", "mixed"] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setSqlDifficulty(d)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize transition ${
+                    sqlDifficulty === d
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-sm font-medium">SQL MCQ count</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {([5, 10, 20] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSqlCount(n)}
+                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold transition ${
+                    sqlCount === n
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              SQL MCQs are general interview-style questions about the topic — they do not use the
+              uploaded document.
+            </p>
+          </div>
+
           <div className="mt-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">Reverse Questioning</span> automatically uses
             your selected topic: <span className="italic">"{topic}"</span>.
           </div>
+
+
 
 
           {hovered && (
