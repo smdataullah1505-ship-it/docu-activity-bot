@@ -1026,7 +1026,29 @@ type MCQ = {
   reference?: string;
 };
 
-function MCQView({ data }: { data: AnyObj }) {
+function QuestionText({ text }: { text: string }) {
+  const parts = String(text ?? "").split(/```(?:sql|text|plaintext)?\n?/i);
+  return (
+    <div className="space-y-2">
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <pre
+            key={i}
+            className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs leading-relaxed"
+          >
+            {part.replace(/\n$/, "")}
+          </pre>
+        ) : part.trim() ? (
+          <p key={i} className="whitespace-pre-wrap font-medium">
+            {part.trim()}
+          </p>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
   const all = useMemo(() => {
     const items: { q: MCQ; diff: "easy" | "medium" | "hard"; idx: number }[] = [];
     (["easy", "medium", "hard"] as const).forEach((diff) => {
