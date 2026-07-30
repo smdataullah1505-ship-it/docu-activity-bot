@@ -417,6 +417,10 @@ function LectureLab() {
             setMcqDifficulty={setMcqDifficulty}
             mcqCount={mcqCount}
             setMcqCount={setMcqCount}
+            sqlDifficulty={sqlDifficulty}
+            setSqlDifficulty={setSqlDifficulty}
+            sqlCount={sqlCount}
+            setSqlCount={setSqlCount}
             onRun={(m) => runGeneration(m, false)}
             onBack={() => setStep("topics")}
           />
