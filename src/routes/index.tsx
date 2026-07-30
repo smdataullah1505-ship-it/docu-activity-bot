@@ -116,7 +116,11 @@ const MODES: {
   { key: "imageQuestion", title: "Image Question", blurb: "AI-generated diagram + question", icon: ImageIcon },
   { key: "chartInterpreter", title: "Chart Interpreter", blurb: "Read & analyse data from the doc", icon: BarChart3 },
   { key: "beforeAfter", title: "Before / After", blurb: "Interactive cause–effect slider", icon: SlidersHorizontal },
+  { key: "sqlMcqs", title: "SQL MCQ", blurb: "Query-based SQL interview MCQs", icon: Database },
 ];
+
+type Difficulty = "easy" | "medium" | "hard" | "mixed";
+type QCount = 5 | 10 | 20;
 
 type CacheMeta = { source: "cache" | "fresh"; createdAt: string } | null;
 
@@ -129,8 +133,10 @@ type PersistedState = {
   topics: string[];
   selectedTopic: string;
   selectedMode: ActivityKey | null;
-  mcqDifficulty: "easy" | "medium" | "hard" | "mixed";
-  mcqCount: 5 | 10 | 20;
+  mcqDifficulty: Difficulty;
+  mcqCount: QCount;
+  sqlDifficulty: Difficulty;
+  sqlCount: QCount;
 };
 
 function loadPersisted(): Partial<PersistedState> {
