@@ -919,6 +919,7 @@ function ResultRenderer({ mode, data, topic }: { mode: ActivityKey; data: AnyObj
       {mode === "imageQuestion" && <ImageQuestionView data={data} />}
       {mode === "chartInterpreter" && <ChartInterpreterView data={data} />}
       {mode === "beforeAfter" && <BeforeAfterView data={data} />}
+      {mode === "sqlMcqs" && <MCQView data={payload} sql />}
     </div>
   );
 }
