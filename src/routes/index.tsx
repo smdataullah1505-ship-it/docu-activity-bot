@@ -335,6 +335,10 @@ function LectureLab() {
         ({ json } = await generateBeforeAfterFn({
           data: { documentText, topic: selectedTopic },
         }));
+      } else if (mode === "sqlMcqs") {
+        ({ json } = await generateSqlMcqsFn({
+          data: { topic: selectedTopic, count: sqlCount, difficulty: sqlDifficulty },
+        }));
       } else {
         ({ json } = await generateActivityFn({
           data: { documentText, topic: selectedTopic, mode, options },
