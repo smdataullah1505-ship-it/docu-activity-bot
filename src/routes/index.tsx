@@ -286,8 +286,9 @@ function LectureLab() {
       setCacheMeta(null);
       setStep("results");
 
-      const difficulty = mode === "mcqs" ? mcqDifficulty : null;
-      const questionCount = mode === "mcqs" ? mcqCount : null;
+      const difficulty =
+        mode === "mcqs" ? mcqDifficulty : mode === "sqlMcqs" ? sqlDifficulty : null;
+      const questionCount = mode === "mcqs" ? mcqCount : mode === "sqlMcqs" ? sqlCount : null;
 
       // 1. Check cache first
       if (!forceRegenerate) {
