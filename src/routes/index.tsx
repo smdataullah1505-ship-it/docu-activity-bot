@@ -676,14 +676,22 @@ function ActivityStep({
   setMcqDifficulty,
   mcqCount,
   setMcqCount,
+  sqlDifficulty,
+  setSqlDifficulty,
+  sqlCount,
+  setSqlCount,
   onRun,
   onBack,
 }: {
   topic: string;
-  mcqDifficulty: "easy" | "medium" | "hard" | "mixed";
-  setMcqDifficulty: (v: "easy" | "medium" | "hard" | "mixed") => void;
-  mcqCount: 5 | 10 | 20;
-  setMcqCount: (v: 5 | 10 | 20) => void;
+  mcqDifficulty: Difficulty;
+  setMcqDifficulty: (v: Difficulty) => void;
+  mcqCount: QCount;
+  setMcqCount: (v: QCount) => void;
+  sqlDifficulty: Difficulty;
+  setSqlDifficulty: (v: Difficulty) => void;
+  sqlCount: QCount;
+  setSqlCount: (v: QCount) => void;
   onRun: (mode: ActivityKey) => void;
   onBack: () => void;
 }) {
