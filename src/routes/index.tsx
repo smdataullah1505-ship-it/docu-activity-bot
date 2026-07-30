@@ -159,10 +159,14 @@ function LectureLab() {
   const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
   const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
 
-  const [mcqDifficulty, setMcqDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">(
+  const [mcqDifficulty, setMcqDifficulty] = useState<Difficulty>(
     persisted.mcqDifficulty ?? "mixed",
   );
-  const [mcqCount, setMcqCount] = useState<5 | 10 | 20>(persisted.mcqCount ?? 10);
+  const [mcqCount, setMcqCount] = useState<QCount>(persisted.mcqCount ?? 10);
+  const [sqlDifficulty, setSqlDifficulty] = useState<Difficulty>(
+    persisted.sqlDifficulty ?? "mixed",
+  );
+  const [sqlCount, setSqlCount] = useState<QCount>(persisted.sqlCount ?? 10);
 
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -184,18 +188,32 @@ function LectureLab() {
         selectedMode,
         mcqDifficulty,
         mcqCount,
+        sqlDifficulty,
+        sqlCount,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       /* quota / serialization errors are non-fatal */
     }
-  }, [step, fileName, documentText, topics, selectedTopic, selectedMode, mcqDifficulty, mcqCount]);
+  }, [
+    step,
+    fileName,
+    documentText,
+    topics,
+    selectedTopic,
+    selectedMode,
+    mcqDifficulty,
+    mcqCount,
+    sqlDifficulty,
+    sqlCount,
+  ]);
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
   const generateImageQuestionFn = useServerFn(generateImageQuestion);
   const generateChartActivityFn = useServerFn(generateChartActivity);
   const generateBeforeAfterFn = useServerFn(generateBeforeAfter);
+  const generateSqlMcqsFn = useServerFn(generateSqlMcqs);
   const saveCachedActivityFn = useServerFn(saveCachedActivity);
   const getCachedActivityFn = useServerFn(getCachedActivity);
 
