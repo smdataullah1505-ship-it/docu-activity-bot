@@ -1063,7 +1063,8 @@ function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
   if (all.length === 0) {
     return (
       <div className="surface-card p-6 text-center text-muted-foreground">
-        No MCQs were generated for this topic.
+        No {sql ? "SQL MCQs" : "MCQs"} were generated for this topic.
+
       </div>
     );
   }
