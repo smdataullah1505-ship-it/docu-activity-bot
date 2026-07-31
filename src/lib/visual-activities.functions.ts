@@ -38,7 +38,7 @@ const COMMON_SYSTEM = `You generate classroom learning content for college/engin
 export const generateImageQuestion = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota(QUOTA_KIND);
+    await enforceAiQuota("image");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
@@ -134,7 +134,7 @@ ${truncated}
 export const generateChartActivity = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota(QUOTA_KIND);
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
@@ -189,7 +189,7 @@ ${truncated}
 export const generateBeforeAfter = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota(QUOTA_KIND);
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
