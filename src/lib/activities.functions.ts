@@ -2,14 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { generateText } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { enforceAiQuota, MAX_DOCUMENT_CHARS, MAX_SHORT_TEXT } from "./ai-rate-limit.server";
 
 const ExtractInput = z.object({
-  documentText: z.string().min(1),
+  documentText: z.string().min(1).max(MAX_DOCUMENT_CHARS),
 });
 
 export const extractTopics = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ExtractInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
@@ -38,14 +40,14 @@ export const extractTopics = createServerFn({ method: "POST" })
   });
 
 const ActivityInput = z.object({
-  documentText: z.string().min(1),
-  topic: z.string().min(1),
-  mode: z.string().min(1),
+  documentText: z.string().min(1).max(MAX_DOCUMENT_CHARS),
+  topic: z.string().min(1).max(MAX_SHORT_TEXT),
+  mode: z.string().min(1).max(100),
   options: z
     .object({
       difficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional(),
-      count: z.number().int().positive().optional(),
-      concept: z.string().optional(),
+      count: z.number().int().positive().max(50).optional(),
+      concept: z.string().max(MAX_SHORT_TEXT).optional(),
     })
     .optional(),
 });
@@ -66,6 +68,7 @@ const MODE_INSTRUCTIONS: Record<string, string> = {
 export const generateActivity = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ActivityInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
