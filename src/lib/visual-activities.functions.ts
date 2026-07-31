@@ -2,10 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { generateText } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { enforceAiQuota, MAX_DOCUMENT_CHARS, MAX_SHORT_TEXT } from "./ai-rate-limit.server";
 
 const BaseInput = z.object({
-  documentText: z.string().min(1),
-  topic: z.string().min(1),
+  documentText: z.string().min(1).max(MAX_DOCUMENT_CHARS),
+  topic: z.string().min(1).max(MAX_SHORT_TEXT),
 });
 
 function parseJson(text: string): unknown {
@@ -37,6 +38,7 @@ const COMMON_SYSTEM = `You generate classroom learning content for college/engin
 export const generateImageQuestion = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("image");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
@@ -132,6 +134,7 @@ ${truncated}
 export const generateChartActivity = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);
@@ -186,6 +189,7 @@ ${truncated}
 export const generateBeforeAfter = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     const gateway = createLovableAiGatewayProvider(key);

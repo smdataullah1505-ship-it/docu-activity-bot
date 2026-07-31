@@ -1,9 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { generateSqlBatch } from "./sql-mcq.server";
+import { enforceAiQuota, MAX_SHORT_TEXT } from "./ai-rate-limit.server";
 
 const SqlInput = z.object({
-  topic: z.string().min(1),
+  topic: z.string().min(1).max(MAX_SHORT_TEXT),
   count: z.union([z.literal(5), z.literal(10), z.literal(20)]),
   difficulty: z.enum(["easy", "medium", "hard", "mixed"]),
 });
@@ -11,6 +12,7 @@ const SqlInput = z.object({
 export const generateSqlMcqs = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => SqlInput.parse(d))
   .handler(async ({ data }) => {
+    await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
