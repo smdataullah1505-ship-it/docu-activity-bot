@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const LookupSchema = z.object({
+  documentHash: z.string().min(1).max(64),
   topic: z.string().min(1).max(500),
   activityType: z.string().min(1).max(100),
   difficulty: z.string().max(50).nullable().optional(),
@@ -23,6 +24,7 @@ export const getCachedActivity = createServerFn({ method: "POST" })
     let q = supabaseAdmin
       .from("saved_activities")
       .select("generated_json, created_at")
+      .eq("document_hash", data.documentHash)
       .eq("topic", data.topic)
       .eq("activity_type", data.activityType)
       .order("created_at", { ascending: false })
@@ -52,6 +54,7 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
       let del = supabaseAdmin
         .from("saved_activities")
         .delete()
+        .eq("document_hash", data.documentHash)
         .eq("topic", data.topic)
         .eq("activity_type", data.activityType);
       del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
@@ -63,6 +66,7 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
 
     const { error } = await supabaseAdmin.from("saved_activities").insert({
       document_name: data.documentName,
+      document_hash: data.documentHash,
       topic: data.topic,
       activity_type: data.activityType,
       difficulty,

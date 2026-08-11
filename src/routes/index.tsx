@@ -52,6 +52,7 @@ import {
 import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
 import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
+import { hashDocument } from "@/lib/doc-hash";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
@@ -130,6 +131,7 @@ type PersistedState = {
   step: Step;
   fileName: string;
   documentText: string;
+  documentHash: string;
   topics: string[];
   selectedTopic: string;
   selectedMode: ActivityKey | null;
@@ -155,6 +157,7 @@ function LectureLab() {
   const [step, setStep] = useState<Step>(persisted.step ?? "upload");
   const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
   const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
+  const [documentHash, setDocumentHash] = useState<string>(persisted.documentHash ?? "");
   const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
   const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
   const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
@@ -183,6 +186,7 @@ function LectureLab() {
         step,
         fileName,
         documentText,
+        documentHash,
         topics,
         selectedTopic,
         selectedMode,
@@ -199,6 +203,7 @@ function LectureLab() {
     step,
     fileName,
     documentText,
+    documentHash,
     topics,
     selectedTopic,
     selectedMode,
@@ -232,6 +237,7 @@ function LectureLab() {
           return;
         }
         setDocumentText(text);
+        setDocumentHash(await hashDocument(text));
         setParsing(false);
         setExtracting(true);
         const { topics } = await extractTopicsFn({ data: { documentText: text } });
@@ -261,6 +267,7 @@ function LectureLab() {
     setStep("upload");
     setFileName("");
     setDocumentText("");
+    setDocumentHash("");
     setTopics([]);
     setSelectedTopic("");
     setSelectedMode(null);
@@ -295,6 +302,7 @@ function LectureLab() {
         try {
           const cached = await getCachedActivityFn({
             data: {
+              documentHash,
               topic: selectedTopic,
               activityType: mode,
               difficulty,
@@ -352,6 +360,7 @@ function LectureLab() {
         await saveCachedActivityFn({
           data: {
             documentName: fileName,
+            documentHash,
             topic: selectedTopic,
             activityType: mode,
             difficulty,
@@ -2139,13 +2148,6 @@ function ChartQuestionItem({ index, q }: { index: number; q: ChartQuestion }) {
 type BeforePoint = { cause: number; effect: number; note?: string };
 
 function BeforeAfterView({ data }: { data: AnyObj }) {
-  if (data.empty) {
-    return (
-      <div className="surface-card p-6 text-center text-muted-foreground">
-        {String(data.message || "No causal relationship found for this topic in the document.")}
-      </div>
-    );
-  }
   const title = String(data.title || "Cause–Effect");
   const causeName = String(data.causeName || "Input");
   const causeUnit = String(data.causeUnit || "");
@@ -2158,12 +2160,15 @@ function BeforeAfterView({ data }: { data: AnyObj }) {
   const relationship = String(data.relationship || "");
   const documentReference = data.documentReference ? String(data.documentReference) : "";
   const insight = data.insight ? String(data.insight) : "";
-  const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
-    cause: Number(p.cause),
-    effect: Number(p.effect),
-    note: p.note ? String(p.note) : "",
-  }));
-  const points = rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+
+  const points = useMemo(() => {
+    const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
+      cause: Number(p.cause),
+      effect: Number(p.effect),
+      note: p.note ? String(p.note) : "",
+    }));
+    return rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+  }, [data.points]);
 
   const [value, setValue] = useState<number>(defaultVal);
 
@@ -2181,6 +2186,14 @@ function BeforeAfterView({ data }: { data: AnyObj }) {
     }
     return best;
   }, [points, value]);
+
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No causal relationship found for this topic in the document.")}
+      </div>
+    );
+  }
 
   if (points.length === 0) {
     return (
