@@ -302,6 +302,7 @@ function LectureLab() {
         try {
           const cached = await getCachedActivityFn({
             data: {
+              documentHash,
               topic: selectedTopic,
               activityType: mode,
               difficulty,
