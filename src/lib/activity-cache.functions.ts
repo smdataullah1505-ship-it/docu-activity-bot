@@ -54,6 +54,7 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
       let del = supabaseAdmin
         .from("saved_activities")
         .delete()
+        .eq("document_hash", data.documentHash)
         .eq("topic", data.topic)
         .eq("activity_type", data.activityType);
       del = difficulty ? del.eq("difficulty", difficulty) : del.is("difficulty", null);
@@ -65,6 +66,7 @@ export const saveCachedActivity = createServerFn({ method: "POST" })
 
     const { error } = await supabaseAdmin.from("saved_activities").insert({
       document_name: data.documentName,
+      document_hash: data.documentHash,
       topic: data.topic,
       activity_type: data.activityType,
       difficulty,
