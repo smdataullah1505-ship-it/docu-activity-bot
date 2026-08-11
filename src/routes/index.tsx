@@ -52,6 +52,7 @@ import {
 import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
 import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
+import { hashDocument } from "@/lib/doc-hash";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
