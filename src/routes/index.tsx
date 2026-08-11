@@ -2139,13 +2139,6 @@ function ChartQuestionItem({ index, q }: { index: number; q: ChartQuestion }) {
 type BeforePoint = { cause: number; effect: number; note?: string };
 
 function BeforeAfterView({ data }: { data: AnyObj }) {
-  if (data.empty) {
-    return (
-      <div className="surface-card p-6 text-center text-muted-foreground">
-        {String(data.message || "No causal relationship found for this topic in the document.")}
-      </div>
-    );
-  }
   const title = String(data.title || "Cause–Effect");
   const causeName = String(data.causeName || "Input");
   const causeUnit = String(data.causeUnit || "");
@@ -2158,12 +2151,15 @@ function BeforeAfterView({ data }: { data: AnyObj }) {
   const relationship = String(data.relationship || "");
   const documentReference = data.documentReference ? String(data.documentReference) : "";
   const insight = data.insight ? String(data.insight) : "";
-  const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
-    cause: Number(p.cause),
-    effect: Number(p.effect),
-    note: p.note ? String(p.note) : "",
-  }));
-  const points = rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+
+  const points = useMemo(() => {
+    const rawPoints = asArr<BeforePoint>(data.points).map((p) => ({
+      cause: Number(p.cause),
+      effect: Number(p.effect),
+      note: p.note ? String(p.note) : "",
+    }));
+    return rawPoints.length > 0 ? [...rawPoints].sort((a, b) => a.cause - b.cause) : [];
+  }, [data.points]);
 
   const [value, setValue] = useState<number>(defaultVal);
 
@@ -2181,6 +2177,14 @@ function BeforeAfterView({ data }: { data: AnyObj }) {
     }
     return best;
   }, [points, value]);
+
+  if (data.empty) {
+    return (
+      <div className="surface-card p-6 text-center text-muted-foreground">
+        {String(data.message || "No causal relationship found for this topic in the document.")}
+      </div>
+    );
+  }
 
   if (points.length === 0) {
     return (
