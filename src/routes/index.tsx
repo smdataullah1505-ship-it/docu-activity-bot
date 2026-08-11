@@ -267,6 +267,7 @@ function LectureLab() {
     setStep("upload");
     setFileName("");
     setDocumentText("");
+    setDocumentHash("");
     setTopics([]);
     setSelectedTopic("");
     setSelectedMode(null);
