@@ -237,6 +237,7 @@ function LectureLab() {
           return;
         }
         setDocumentText(text);
+        setDocumentHash(await hashDocument(text));
         setParsing(false);
         setExtracting(true);
         const { topics } = await extractTopicsFn({ data: { documentText: text } });
