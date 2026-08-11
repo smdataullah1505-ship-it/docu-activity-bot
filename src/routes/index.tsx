@@ -157,6 +157,7 @@ function LectureLab() {
   const [step, setStep] = useState<Step>(persisted.step ?? "upload");
   const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
   const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
+  const [documentHash, setDocumentHash] = useState<string>(persisted.documentHash ?? "");
   const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
   const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
   const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
