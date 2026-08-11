@@ -24,6 +24,7 @@ export const getCachedActivity = createServerFn({ method: "POST" })
     let q = supabaseAdmin
       .from("saved_activities")
       .select("generated_json, created_at")
+      .eq("document_hash", data.documentHash)
       .eq("topic", data.topic)
       .eq("activity_type", data.activityType)
       .order("created_at", { ascending: false })
