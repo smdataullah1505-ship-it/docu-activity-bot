@@ -46,6 +46,7 @@ export type Database = {
           activity_type: string
           created_at: string
           difficulty: string | null
+          document_hash: string | null
           document_id: string | null
           document_name: string
           generated_json: Json
@@ -58,6 +59,7 @@ export type Database = {
           activity_type: string
           created_at?: string
           difficulty?: string | null
+          document_hash?: string | null
           document_id?: string | null
           document_name?: string
           generated_json: Json
@@ -70,6 +72,7 @@ export type Database = {
           activity_type?: string
           created_at?: string
           difficulty?: string | null
+          document_hash?: string | null
           document_id?: string | null
           document_name?: string
           generated_json?: Json
