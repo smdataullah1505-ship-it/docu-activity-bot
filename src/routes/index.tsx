@@ -203,6 +203,7 @@ function LectureLab() {
     step,
     fileName,
     documentText,
+    documentHash,
     topics,
     selectedTopic,
     selectedMode,
