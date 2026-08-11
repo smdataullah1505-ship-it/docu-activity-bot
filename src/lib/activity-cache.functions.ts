@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const LookupSchema = z.object({
+  documentHash: z.string().min(1).max(64),
   topic: z.string().min(1).max(500),
   activityType: z.string().min(1).max(100),
   difficulty: z.string().max(50).nullable().optional(),
