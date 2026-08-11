@@ -131,6 +131,7 @@ type PersistedState = {
   step: Step;
   fileName: string;
   documentText: string;
+  documentHash: string;
   topics: string[];
   selectedTopic: string;
   selectedMode: ActivityKey | null;
