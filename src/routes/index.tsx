@@ -360,6 +360,7 @@ function LectureLab() {
         await saveCachedActivityFn({
           data: {
             documentName: fileName,
+            documentHash,
             topic: selectedTopic,
             activityType: mode,
             difficulty,
