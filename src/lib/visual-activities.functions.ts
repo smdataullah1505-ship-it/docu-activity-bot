@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { callAiGateway } from "./ai-gateway.server";
 import { enforceAiQuota, MAX_DOCUMENT_CHARS, MAX_SHORT_TEXT } from "./ai-rate-limit.server";
 
 const BaseInput = z.object({
   documentText: z.string().min(1).max(MAX_DOCUMENT_CHARS),
   topic: z.string().min(1).max(MAX_SHORT_TEXT),
+  userApiKey: z.string().max(200).optional(),
 });
 
 function parseJson(text: string): unknown {
@@ -38,16 +38,16 @@ const COMMON_SYSTEM = `You generate classroom learning content for college/engin
 export const generateImageQuestion = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("image");
+    if (!data.userApiKey) await enforceAiQuota("image");
     const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-    const gateway = createLovableAiGatewayProvider(key);
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const truncated = data.documentText.slice(0, 50000);
 
     // Step 1: generate an educational image prompt + 3-5 grounded questions
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
+    const { text } = await callAiGateway({
+      lovableApiKey: key ?? "",
+      userApiKey: data.userApiKey,
       system: COMMON_SYSTEM,
       prompt: `SELECTED TOPIC: ${data.topic}
 
@@ -93,8 +93,11 @@ ${truncated}
     }
 
     // Step 2: call the AI gateway image endpoint (non-streaming) to get b64 PNG.
+    // Direct Gemini (BYOK) path does not support the gateway image endpoint —
+    // fall back to the text/description-based question instead of failing.
     let imageDataUrl = "";
     try {
+      if (data.userApiKey || !key) throw new Error("skip-image");
       const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
         method: "POST",
         headers: {
@@ -134,15 +137,15 @@ ${truncated}
 export const generateChartActivity = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("text");
+    if (!data.userApiKey) await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-    const gateway = createLovableAiGatewayProvider(key);
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const truncated = data.documentText.slice(0, 60000);
 
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
+    const { text } = await callAiGateway({
+      lovableApiKey: key ?? "",
+      userApiKey: data.userApiKey,
       system: COMMON_SYSTEM,
       prompt: `SELECTED TOPIC: ${data.topic}
 
@@ -189,15 +192,15 @@ ${truncated}
 export const generateBeforeAfter = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => BaseInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("text");
+    if (!data.userApiKey) await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-    const gateway = createLovableAiGatewayProvider(key);
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const truncated = data.documentText.slice(0, 60000);
 
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
+    const { text } = await callAiGateway({
+      lovableApiKey: key ?? "",
+      userApiKey: data.userApiKey,
       system: COMMON_SYSTEM,
       prompt: `SELECTED TOPIC: ${data.topic}
 
