@@ -1,25 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { callAiGateway } from "./ai-gateway.server";
 import { enforceAiQuota, MAX_DOCUMENT_CHARS, MAX_SHORT_TEXT } from "./ai-rate-limit.server";
 
 const ExtractInput = z.object({
   documentText: z.string().min(1).max(MAX_DOCUMENT_CHARS),
+  userApiKey: z.string().max(200).optional(),
 });
 
 export const extractTopics = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ExtractInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("text");
+    if (!data.userApiKey) await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-    const gateway = createLovableAiGatewayProvider(key);
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const truncated = data.documentText.slice(0, 60000);
 
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
+    const { text } = await callAiGateway({
+      lovableApiKey: key ?? "",
+      userApiKey: data.userApiKey,
       system:
         "You extract topics/sections from lecture material. Respond ONLY with a JSON array of topic strings. No markdown, no prose. 5-15 topics. Each topic should be a short, specific subject covered in the material (3-8 words).",
       prompt: `Extract the main topics covered in this lecture material. Return JSON array only.\n\n---\n${truncated}`,
@@ -50,6 +50,7 @@ const ActivityInput = z.object({
       concept: z.string().max(MAX_SHORT_TEXT).optional(),
     })
     .optional(),
+  userApiKey: z.string().max(200).optional(),
 });
 
 const MODE_INSTRUCTIONS: Record<string, string> = {
@@ -68,10 +69,9 @@ const MODE_INSTRUCTIONS: Record<string, string> = {
 export const generateActivity = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ActivityInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("text");
+    if (!data.userApiKey) await enforceAiQuota("text");
     const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
-    const gateway = createLovableAiGatewayProvider(key);
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const instr = MODE_INSTRUCTIONS[data.mode];
     if (!instr) throw new Error("Unknown mode");
@@ -107,8 +107,9 @@ LECTURE MATERIAL:
 ${truncated}
 ---`;
 
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
+    const { text } = await callAiGateway({
+      lovableApiKey: key ?? "",
+      userApiKey: data.userApiKey,
       system,
       prompt,
     });

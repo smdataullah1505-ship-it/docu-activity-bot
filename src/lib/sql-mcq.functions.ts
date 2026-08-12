@@ -7,14 +7,15 @@ const SqlInput = z.object({
   topic: z.string().min(1).max(MAX_SHORT_TEXT),
   count: z.union([z.literal(5), z.literal(10), z.literal(20)]),
   difficulty: z.enum(["easy", "medium", "hard", "mixed"]),
+  userApiKey: z.string().max(200).optional(),
 });
 
 export const generateSqlMcqs = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => SqlInput.parse(d))
   .handler(async ({ data }) => {
-    await enforceAiQuota("text");
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
+    if (!data.userApiKey) await enforceAiQuota("text");
+    const key = process.env.LOVABLE_API_KEY ?? "";
+    if (!key && !data.userApiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     if (data.difficulty === "mixed") {
       const base = Math.ceil(data.count / 3);
@@ -22,14 +23,14 @@ export const generateSqlMcqs = createServerFn({ method: "POST" })
       const mediumN = base;
       const hardN = Math.max(data.count - easyN - mediumN, 0);
       const [easy, medium, hard] = await Promise.all([
-        generateSqlBatch(key, data.topic, "easy", easyN),
-        generateSqlBatch(key, data.topic, "medium", mediumN),
-        generateSqlBatch(key, data.topic, "hard", hardN),
+        generateSqlBatch(key, data.topic, "easy", easyN, data.userApiKey),
+        generateSqlBatch(key, data.topic, "medium", mediumN, data.userApiKey),
+        generateSqlBatch(key, data.topic, "hard", hardN, data.userApiKey),
       ]);
       return { json: JSON.stringify({ sqlMcqs: { easy, medium, hard } }) };
     }
 
-    const batch = await generateSqlBatch(key, data.topic, data.difficulty, data.count);
+    const batch = await generateSqlBatch(key, data.topic, data.difficulty, data.count, data.userApiKey);
     return {
       json: JSON.stringify({
         sqlMcqs: {

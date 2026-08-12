@@ -1,5 +1,4 @@
-import { generateText } from "ai";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { callAiGateway } from "./ai-gateway.server";
 
 const QUESTION_TYPES = `1. "What does this query do?" — show a SQL query, ask what it returns or which operation it performs; 4 option descriptions.
 2. "Which query is correct?" — describe a scenario, present 4 SQL queries, one correctly solves it.
@@ -63,11 +62,12 @@ export async function generateSqlBatch(
   topic: string,
   level: "easy" | "medium" | "hard",
   count: number,
+  userApiKey?: string,
 ): Promise<SqlQuestion[]> {
   if (count <= 0) return [];
-  const gateway = createLovableAiGatewayProvider(key);
-  const { text } = await generateText({
-    model: gateway("google/gemini-3-flash-preview"),
+  const { text } = await callAiGateway({
+    lovableApiKey: key,
+    userApiKey,
     system:
       "You are an SQL interview coach. You write query-based multiple choice questions. Respond with VALID JSON ONLY — no markdown fences around the JSON, no commentary.",
     prompt: `Generate ${count} ${level.toUpperCase()} SQL MCQ questions related to the topic "${topic}".

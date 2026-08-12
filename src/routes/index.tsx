@@ -26,6 +26,8 @@ import {
   ImageIcon,
   BarChart3,
   SlidersHorizontal,
+  Settings,
+  KeyRound,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -55,6 +57,16 @@ import { extractTextFromFile } from "@/lib/parse-document";
 import { hashDocument } from "@/lib/doc-hash";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { getGeminiKey, setGeminiKey, clearGeminiKey, hasGeminiKey } from "@/lib/user-api-key";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -177,6 +189,13 @@ function LectureLab() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [keySaved, setKeySaved] = useState(false);
+
+  // Reflect BYOK key presence once mounted (localStorage is browser-only).
+  useEffect(() => {
+    setKeySaved(hasGeminiKey());
+  }, [settingsOpen]);
 
   // Persist session state to localStorage so refreshes / remounts don't lose progress.
   useEffect(() => {
@@ -240,7 +259,9 @@ function LectureLab() {
         setDocumentHash(await hashDocument(text));
         setParsing(false);
         setExtracting(true);
-        const { topics } = await extractTopicsFn({ data: { documentText: text } });
+        const { topics } = await extractTopicsFn({
+          data: { documentText: text, userApiKey: getGeminiKey() || undefined },
+        });
         setTopics(topics);
         setExtracting(false);
         setStep("topics");
@@ -330,26 +351,27 @@ function LectureLab() {
         // Auto-use the selected topic as the concept — no separate input needed.
         options.concept = selectedTopic;
       }
+      const userApiKey = getGeminiKey() || undefined;
       let json: string;
       if (mode === "imageQuestion") {
         ({ json } = await generateImageQuestionFn({
-          data: { documentText, topic: selectedTopic },
+          data: { documentText, topic: selectedTopic, userApiKey },
         }));
       } else if (mode === "chartInterpreter") {
         ({ json } = await generateChartActivityFn({
-          data: { documentText, topic: selectedTopic },
+          data: { documentText, topic: selectedTopic, userApiKey },
         }));
       } else if (mode === "beforeAfter") {
         ({ json } = await generateBeforeAfterFn({
-          data: { documentText, topic: selectedTopic },
+          data: { documentText, topic: selectedTopic, userApiKey },
         }));
       } else if (mode === "sqlMcqs") {
         ({ json } = await generateSqlMcqsFn({
-          data: { topic: selectedTopic, count: sqlCount, difficulty: sqlDifficulty },
+          data: { topic: selectedTopic, count: sqlCount, difficulty: sqlDifficulty, userApiKey },
         }));
       } else {
         ({ json } = await generateActivityFn({
-          data: { documentText, topic: selectedTopic, mode, options },
+          data: { documentText, topic: selectedTopic, mode, options, userApiKey },
         }));
       }
       const parsed = JSON.parse(json);
@@ -378,7 +400,10 @@ function LectureLab() {
       setGenerating(false);
     } catch (err) {
       setGenerating(false);
-      const msg = err instanceof Error ? err.message : "Generation failed.";
+      let msg = err instanceof Error ? err.message : "Generation failed.";
+      if (!getGeminiKey() && /429|too many requests|usage limit|quota/i.test(msg)) {
+        msg = "You've reached the free usage limit. Please add your own Gemini API key to continue.";
+      }
       setGenerationError(msg);
       toast.error(msg);
     }
@@ -387,7 +412,12 @@ function LectureLab() {
   return (
     <div className="min-h-screen">
       <Toaster richColors position="top-center" />
-      <Header onReset={reset} />
+      <Header onReset={reset} onOpenSettings={() => setSettingsOpen(true)} keySaved={keySaved} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSaved={() => setKeySaved(hasGeminiKey())}
+      />
 
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-6">
         <Stepper step={step} />
@@ -445,6 +475,7 @@ function LectureLab() {
             cacheMeta={cacheMeta}
             onBack={() => setStep("activity")}
             onRegenerate={() => selectedMode && runGeneration(selectedMode, true)}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         )}
       </main>
@@ -452,7 +483,111 @@ function LectureLab() {
   );
 }
 
-function Header({ onReset }: { onReset: () => void }) {
+function SettingsDialog({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const saved = hasGeminiKey();
+
+  useEffect(() => {
+    if (open) setValue("");
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" /> Your Gemini API key
+          </DialogTitle>
+          <DialogDescription>
+            Use your own Google Gemini key to run generations without limits.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+              saved ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {saved ? (
+              <>
+                <Check className="h-3.5 w-3.5" /> A key is saved in this browser
+              </>
+            ) : (
+              <>
+                <X className="h-3.5 w-3.5" /> No key saved — using shared free quota
+              </>
+            )}
+          </div>
+
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder={saved ? "Enter a new key to replace the saved one" : "AIza…"}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+
+          <p className="text-xs text-muted-foreground">
+            Your key is stored only in this browser and is never saved on our servers. Get a free key at{" "}
+            <a
+              className="font-medium text-primary underline"
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noreferrer"
+            >
+              https://aistudio.google.com/apikey
+            </a>
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={() => {
+              clearGeminiKey();
+              onSaved();
+              onOpenChange(false);
+              toast.success("API key removed from this browser.");
+            }}
+          >
+            Clear key
+          </Button>
+          <Button
+            disabled={!value.trim()}
+            onClick={() => {
+              setGeminiKey(value);
+              setValue("");
+              onSaved();
+              onOpenChange(false);
+              toast.success("API key saved in this browser.");
+            }}
+          >
+            Save key
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Header({
+  onReset,
+  onOpenSettings,
+  keySaved,
+}: {
+  onReset: () => void;
+  onOpenSettings: () => void;
+  keySaved: boolean;
+}) {
   return (
     <header className="no-print border-b border-border/60 bg-card/60 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
@@ -465,16 +600,27 @@ function Header({ onReset }: { onReset: () => void }) {
             <p className="text-xs text-muted-foreground">Classroom activities from your lecture material</p>
           </div>
         </button>
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            onReset();
-          }}
-          className="text-sm font-medium text-muted-foreground hover:text-foreground"
-        >
-          New session
-        </a>
+        <div className="flex items-center gap-3">
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              onReset();
+            }}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            New session
+          </a>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onOpenSettings}
+            aria-label="Settings — API key"
+            title={keySaved ? "Using your own Gemini API key" : "Add your Gemini API key"}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </header>
   );
@@ -853,6 +999,7 @@ function ResultsStep({
   cacheMeta,
   onBack,
   onRegenerate,
+  onOpenSettings,
 }: {
   topic: string;
   mode: ActivityKey | null;
@@ -862,6 +1009,7 @@ function ResultsStep({
   cacheMeta: CacheMeta;
   onBack: () => void;
   onRegenerate: () => void;
+  onOpenSettings: () => void;
 }) {
   const meta = MODES.find((m) => m.key === mode);
   return (
@@ -924,9 +1072,16 @@ function ResultsStep({
             <div className="flex-1">
               <p className="font-semibold text-danger">Generation failed</p>
               <p className="mt-1 text-sm text-muted-foreground">{error}</p>
-              <Button className="mt-4" onClick={onRegenerate}>
-                <RefreshCw className="mr-2 h-4 w-4" /> Retry
-              </Button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onClick={onRegenerate}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Retry
+                </Button>
+                {/usage limit/i.test(error) && (
+                  <Button variant="outline" onClick={onOpenSettings}>
+                    <KeyRound className="mr-2 h-4 w-4" /> Add your API key
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
