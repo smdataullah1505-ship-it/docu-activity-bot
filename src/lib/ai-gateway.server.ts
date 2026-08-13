@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 
-export const DEFAULT_MODEL = "google/gemini-3-flash-preview";
+export const DEFAULT_MODEL = "google/gemini-2.5-flash";
 /** Models tried in order when calling the Google Gemini API directly with a user-supplied key. */
 export const DIRECT_GEMINI_MODELS = [
   "gemini-3.6-flash",
