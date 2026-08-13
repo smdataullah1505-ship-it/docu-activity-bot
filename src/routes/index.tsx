@@ -165,23 +165,20 @@ function loadPersisted(): Partial<PersistedState> {
 }
 
 function LectureLab() {
-  const persisted = useMemo(() => loadPersisted(), []);
-  const [step, setStep] = useState<Step>(persisted.step ?? "upload");
-  const [fileName, setFileName] = useState<string>(persisted.fileName ?? "");
-  const [documentText, setDocumentText] = useState<string>(persisted.documentText ?? "");
-  const [documentHash, setDocumentHash] = useState<string>(persisted.documentHash ?? "");
-  const [topics, setTopics] = useState<string[]>(persisted.topics ?? []);
-  const [selectedTopic, setSelectedTopic] = useState<string>(persisted.selectedTopic ?? "");
-  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(persisted.selectedMode ?? null);
+  // All state starts at server-render defaults; the persisted session is
+  // restored in an effect after mount to avoid hydration mismatches.
+  const [step, setStep] = useState<Step>("upload");
+  const [fileName, setFileName] = useState<string>("");
+  const [documentText, setDocumentText] = useState<string>("");
+  const [documentHash, setDocumentHash] = useState<string>("");
+  const [topics, setTopics] = useState<string[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<string>("");
+  const [selectedMode, setSelectedMode] = useState<ActivityKey | null>(null);
 
-  const [mcqDifficulty, setMcqDifficulty] = useState<Difficulty>(
-    persisted.mcqDifficulty ?? "mixed",
-  );
-  const [mcqCount, setMcqCount] = useState<QCount>(persisted.mcqCount ?? 10);
-  const [sqlDifficulty, setSqlDifficulty] = useState<Difficulty>(
-    persisted.sqlDifficulty ?? "mixed",
-  );
-  const [sqlCount, setSqlCount] = useState<QCount>(persisted.sqlCount ?? 10);
+  const [mcqDifficulty, setMcqDifficulty] = useState<Difficulty>("mixed");
+  const [mcqCount, setMcqCount] = useState<QCount>(10);
+  const [sqlDifficulty, setSqlDifficulty] = useState<Difficulty>("mixed");
+  const [sqlCount, setSqlCount] = useState<QCount>(10);
 
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -191,15 +188,36 @@ function LectureLab() {
   const [cacheMeta, setCacheMeta] = useState<CacheMeta>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
+  const [restored, setRestored] = useState(false);
 
-  // Reflect BYOK key presence once mounted (localStorage is browser-only).
+  // Restore persisted session once, after mount.
   useEffect(() => {
+    const p = loadPersisted();
+    if (p.step) setStep(p.step);
+    if (p.fileName) setFileName(p.fileName);
+    if (p.documentText) setDocumentText(p.documentText);
+    if (p.documentHash) setDocumentHash(p.documentHash);
+    if (p.topics) setTopics(p.topics);
+    if (p.selectedTopic) setSelectedTopic(p.selectedTopic);
+    if (p.selectedMode) setSelectedMode(p.selectedMode);
+    if (p.mcqDifficulty) setMcqDifficulty(p.mcqDifficulty);
+    if (p.mcqCount) setMcqCount(p.mcqCount);
+    if (p.sqlDifficulty) setSqlDifficulty(p.sqlDifficulty);
+    if (p.sqlCount) setSqlCount(p.sqlCount);
     setKeySaved(hasGeminiKey());
-  }, [settingsOpen]);
+    setRestored(true);
+  }, []);
+
+  // Reflect BYOK key presence after mount / settings changes.
+  useEffect(() => {
+    if (!restored) return;
+    setKeySaved(hasGeminiKey());
+  }, [settingsOpen, restored]);
 
   // Persist session state to localStorage so refreshes / remounts don't lose progress.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!restored) return;
     try {
       const payload: PersistedState = {
         step,
@@ -219,6 +237,7 @@ function LectureLab() {
       /* quota / serialization errors are non-fatal */
     }
   }, [
+    restored,
     step,
     fileName,
     documentText,
@@ -231,6 +250,7 @@ function LectureLab() {
     sqlDifficulty,
     sqlCount,
   ]);
+
 
   const extractTopicsFn = useServerFn(extractTopics);
   const generateActivityFn = useServerFn(generateActivity);
