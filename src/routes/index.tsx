@@ -547,6 +547,11 @@ function SettingsDialog({
               https://aistudio.google.com/apikey
             </a>
           </p>
+
+          <p className="text-xs text-muted-foreground">
+            Note: on Google's free tier, prompts may be used by Google to improve their models.
+          </p>
+
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
