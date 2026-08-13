@@ -2,8 +2,12 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 
 export const DEFAULT_MODEL = "google/gemini-3-flash-preview";
-/** Model used when calling the Google Gemini API directly with a user-supplied key. */
-export const DIRECT_GEMINI_MODEL = "gemini-2.5-flash";
+/** Models tried in order when calling the Google Gemini API directly with a user-supplied key. */
+export const DIRECT_GEMINI_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+];
 
 export function createLovableAiGatewayProvider(lovableApiKey: string) {
   return createOpenAICompatible({
