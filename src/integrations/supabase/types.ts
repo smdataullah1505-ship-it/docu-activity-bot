@@ -41,6 +41,27 @@ export type Database = {
         }
         Relationships: []
       }
+      cached_topics: {
+        Row: {
+          created_at: string
+          document_hash: string
+          topics: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          document_hash: string
+          topics?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          document_hash?: string
+          topics?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       saved_activities: {
         Row: {
           activity_type: string
