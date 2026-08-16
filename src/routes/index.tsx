@@ -52,6 +52,11 @@ import {
   generateBeforeAfter,
 } from "@/lib/visual-activities.functions";
 import { saveCachedActivity, getCachedActivity } from "@/lib/activity-cache.functions";
+import {
+  getCachedTopics,
+  saveCachedTopics,
+  clearCachedTopics,
+} from "@/lib/topic-cache.functions";
 import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
 import { hashDocument } from "@/lib/doc-hash";
@@ -260,6 +265,9 @@ function LectureLab() {
   const generateSqlMcqsFn = useServerFn(generateSqlMcqs);
   const saveCachedActivityFn = useServerFn(saveCachedActivity);
   const getCachedActivityFn = useServerFn(getCachedActivity);
+  const getCachedTopicsFn = useServerFn(getCachedTopics);
+  const saveCachedTopicsFn = useServerFn(saveCachedTopics);
+  const clearCachedTopicsFn = useServerFn(clearCachedTopics);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -276,13 +284,34 @@ function LectureLab() {
           return;
         }
         setDocumentText(text);
-        setDocumentHash(await hashDocument(text));
+        const hash = await hashDocument(text);
+        setDocumentHash(hash);
         setParsing(false);
         setExtracting(true);
-        const { topics } = await extractTopicsFn({
-          data: { documentText: text, userApiKey: getGeminiKey() || undefined },
-        });
-        setTopics(topics);
+
+        let cachedTopics: string[] | null = null;
+        try {
+          const cached = await getCachedTopicsFn({ data: { documentHash: hash } });
+          cachedTopics = cached.topics ?? null;
+        } catch {
+          cachedTopics = null;
+        }
+
+        if (cachedTopics && cachedTopics.length > 0) {
+          setTopics(cachedTopics);
+        } else {
+          const { topics } = await extractTopicsFn({
+            data: { documentText: text, userApiKey: getGeminiKey() || undefined },
+          });
+          setTopics(topics);
+          if (topics.length > 0) {
+            try {
+              await saveCachedTopicsFn({ data: { documentHash: hash, topics } });
+            } catch {
+              // caching is best-effort
+            }
+          }
+        }
         setExtracting(false);
         setStep("topics");
       } catch (err) {
@@ -292,8 +321,37 @@ function LectureLab() {
         toast.error(msg);
       }
     },
-    [extractTopicsFn],
+    [extractTopicsFn, getCachedTopicsFn, saveCachedTopicsFn],
   );
+
+  const regenerateTopics = async () => {
+    if (!documentText || !documentHash) return;
+    try {
+      setExtracting(true);
+      try {
+        await clearCachedTopicsFn({ data: { documentHash } });
+      } catch {
+        // ignore cache clear failures
+      }
+      const { topics: fresh } = await extractTopicsFn({
+        data: { documentText, userApiKey: getGeminiKey() || undefined },
+      });
+      setTopics(fresh);
+      setSelectedTopic("");
+      if (fresh.length > 0) {
+        try {
+          await saveCachedTopicsFn({ data: { documentHash, topics: fresh } });
+        } catch {
+          // caching is best-effort
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to re-extract topics.";
+      toast.error(msg);
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const onPickFile = () => fileInputRef.current?.click();
 
@@ -466,6 +524,8 @@ function LectureLab() {
               setStep("activity");
             }}
             onBack={() => setStep("upload")}
+            onRegenerateTopics={regenerateTopics}
+            regenerating={extracting}
           />
         )}
 
@@ -803,12 +863,16 @@ function TopicsStep({
   selectedTopic,
   onSelect,
   onBack,
+  onRegenerateTopics,
+  regenerating,
 }: {
   fileName: string;
   topics: string[];
   selectedTopic: string;
   onSelect: (t: string) => void;
   onBack: () => void;
+  onRegenerateTopics: () => void;
+  regenerating: boolean;
 }) {
   return (
     <section>
@@ -819,9 +883,19 @@ function TopicsStep({
             Extracted from <span className="font-medium text-foreground">{fileName}</span> · {topics.length} topics
           </p>
         </div>
-        <Button variant="ghost" onClick={onBack}>
-          <X className="mr-2 h-4 w-4" /> Use a different file
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onRegenerateTopics} disabled={regenerating}>
+            {regenerating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Regenerate Topics
+          </Button>
+          <Button variant="ghost" onClick={onBack}>
+            <X className="mr-2 h-4 w-4" /> Use a different file
+          </Button>
+        </div>
       </div>
 
       {topics.length === 0 ? (
