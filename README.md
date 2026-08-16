@@ -3,7 +3,7 @@
 An AI-powered activity generator that transforms lecture documents into interactive learning experiences. Built with React, TypeScript, and Supabase, with AI generation powered by Google Gemini.
 
 ## 🚀 Live Demo
-https://docu-activity-bot.lovable.app
+https://lecturelabai.lovable.app
 ## 📋 Features
 
 - 📄 Upload lecture materials (PDF, PPTX, DOCX, TXT)
