@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -57,7 +57,6 @@ import {
   saveCachedTopics,
   clearCachedTopics,
 } from "@/lib/topic-cache.functions";
-import { generateSqlMcqs } from "@/lib/sql-mcq.functions";
 import { extractTextFromFile } from "@/lib/parse-document";
 import { hashDocument } from "@/lib/doc-hash";
 import { Toaster } from "@/components/ui/sonner";
@@ -134,7 +133,6 @@ const MODES: {
   { key: "imageQuestion", title: "Image Question", blurb: "AI-generated diagram + question", icon: ImageIcon },
   { key: "chartInterpreter", title: "Chart Interpreter", blurb: "Read & analyse data from the doc", icon: BarChart3 },
   { key: "beforeAfter", title: "Before / After", blurb: "Interactive cause–effect slider", icon: SlidersHorizontal },
-  { key: "sqlMcqs", title: "SQL MCQ", blurb: "Query-based SQL interview MCQs", icon: Database },
 ];
 
 type Difficulty = "easy" | "medium" | "hard" | "mixed";
@@ -154,8 +152,6 @@ type PersistedState = {
   selectedMode: ActivityKey | null;
   mcqDifficulty: Difficulty;
   mcqCount: QCount;
-  sqlDifficulty: Difficulty;
-  sqlCount: QCount;
 };
 
 function loadPersisted(): Partial<PersistedState> {
@@ -182,8 +178,6 @@ function LectureLab() {
 
   const [mcqDifficulty, setMcqDifficulty] = useState<Difficulty>("mixed");
   const [mcqCount, setMcqCount] = useState<QCount>(10);
-  const [sqlDifficulty, setSqlDifficulty] = useState<Difficulty>("mixed");
-  const [sqlCount, setSqlCount] = useState<QCount>(10);
 
   const [parsing, setParsing] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -207,8 +201,6 @@ function LectureLab() {
     if (p.selectedMode) setSelectedMode(p.selectedMode);
     if (p.mcqDifficulty) setMcqDifficulty(p.mcqDifficulty);
     if (p.mcqCount) setMcqCount(p.mcqCount);
-    if (p.sqlDifficulty) setSqlDifficulty(p.sqlDifficulty);
-    if (p.sqlCount) setSqlCount(p.sqlCount);
     setKeySaved(hasGeminiKey());
     setRestored(true);
   }, []);
@@ -234,8 +226,6 @@ function LectureLab() {
         selectedMode,
         mcqDifficulty,
         mcqCount,
-        sqlDifficulty,
-        sqlCount,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -252,8 +242,6 @@ function LectureLab() {
     selectedMode,
     mcqDifficulty,
     mcqCount,
-    sqlDifficulty,
-    sqlCount,
   ]);
 
 
@@ -262,7 +250,6 @@ function LectureLab() {
   const generateImageQuestionFn = useServerFn(generateImageQuestion);
   const generateChartActivityFn = useServerFn(generateChartActivity);
   const generateBeforeAfterFn = useServerFn(generateBeforeAfter);
-  const generateSqlMcqsFn = useServerFn(generateSqlMcqs);
   const saveCachedActivityFn = useServerFn(saveCachedActivity);
   const getCachedActivityFn = useServerFn(getCachedActivity);
   const getCachedTopicsFn = useServerFn(getCachedTopics);
@@ -392,9 +379,8 @@ function LectureLab() {
       setCacheMeta(null);
       setStep("results");
 
-      const difficulty =
-        mode === "mcqs" ? mcqDifficulty : mode === "sqlMcqs" ? sqlDifficulty : null;
-      const questionCount = mode === "mcqs" ? mcqCount : mode === "sqlMcqs" ? sqlCount : null;
+      const difficulty = mode === "mcqs" ? mcqDifficulty : null;
+      const questionCount = mode === "mcqs" ? mcqCount : null;
 
       // 1. Check cache first
       if (!forceRegenerate) {
@@ -442,10 +428,6 @@ function LectureLab() {
       } else if (mode === "beforeAfter") {
         ({ json } = await generateBeforeAfterFn({
           data: { documentText, topic: selectedTopic, userApiKey },
-        }));
-      } else if (mode === "sqlMcqs") {
-        ({ json } = await generateSqlMcqsFn({
-          data: { topic: selectedTopic, count: sqlCount, difficulty: sqlDifficulty, userApiKey },
         }));
       } else {
         ({ json } = await generateActivityFn({
@@ -536,10 +518,6 @@ function LectureLab() {
             setMcqDifficulty={setMcqDifficulty}
             mcqCount={mcqCount}
             setMcqCount={setMcqCount}
-            sqlDifficulty={sqlDifficulty}
-            setSqlDifficulty={setSqlDifficulty}
-            sqlCount={sqlCount}
-            setSqlCount={setSqlCount}
             onRun={(m) => runGeneration(m, false)}
             onBack={() => setStep("topics")}
           />
@@ -686,6 +664,12 @@ function Header({
           </div>
         </button>
         <div className="flex items-center gap-3">
+          <Link
+            to="/sql-practice"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            SQL Practice
+          </Link>
           <a
             href="#"
             onClick={(e) => {
@@ -934,10 +918,6 @@ function ActivityStep({
   setMcqDifficulty,
   mcqCount,
   setMcqCount,
-  sqlDifficulty,
-  setSqlDifficulty,
-  sqlCount,
-  setSqlCount,
   onRun,
   onBack,
 }: {
@@ -946,10 +926,6 @@ function ActivityStep({
   setMcqDifficulty: (v: Difficulty) => void;
   mcqCount: QCount;
   setMcqCount: (v: QCount) => void;
-  sqlDifficulty: Difficulty;
-  setSqlDifficulty: (v: Difficulty) => void;
-  sqlCount: QCount;
-  setSqlCount: (v: QCount) => void;
   onRun: (mode: ActivityKey) => void;
   onBack: () => void;
 }) {
@@ -1026,48 +1002,6 @@ function ActivityStep({
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="mt-6 border-t border-border pt-4">
-            <p className="text-sm font-medium">SQL MCQ difficulty</p>
-            <div className="mt-2 grid grid-cols-4 gap-2">
-              {(["easy", "medium", "hard", "mixed"] as const).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setSqlDifficulty(d)}
-                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold capitalize transition ${
-                    sqlDifficulty === d
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <p className="text-sm font-medium">SQL MCQ count</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {([5, 10, 20] as const).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setSqlCount(n)}
-                  className={`rounded-md border px-2 py-1.5 text-xs font-semibold transition ${
-                    sqlCount === n
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-card text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              SQL MCQs are general interview-style questions about the topic — they do not use the
-              uploaded document.
-            </p>
           </div>
 
           <div className="mt-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
@@ -1367,7 +1301,7 @@ function QuestionText({ text }: { text: string }) {
   );
 }
 
-function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
+export function MCQView({ data, sql = false }: { data: AnyObj; sql?: boolean }) {
   const all = useMemo(() => {
     const items: { q: MCQ; diff: "easy" | "medium" | "hard"; idx: number }[] = [];
     (["easy", "medium", "hard"] as const).forEach((diff) => {
