@@ -126,13 +126,6 @@ export type Database = {
             referencedColumns: ["code"]
           },
           {
-            foreignKeyName: "quiz_attempts_quiz_code_fkey"
-            columns: ["quiz_code"]
-            isOneToOne: false
-            referencedRelation: "quizzes_public"
-            referencedColumns: ["code"]
-          },
-          {
             foreignKeyName: "quiz_attempts_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
@@ -220,27 +213,7 @@ export type Database = {
       }
     }
     Views: {
-      quizzes_public: {
-        Row: {
-          activity_type: string | null
-          code: string | null
-          created_at: string | null
-          topic: string | null
-        }
-        Insert: {
-          activity_type?: string | null
-          code?: string | null
-          created_at?: string | null
-          topic?: string | null
-        }
-        Update: {
-          activity_type?: string | null
-          code?: string | null
-          created_at?: string | null
-          topic?: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       bump_ai_rate_limit: {
