@@ -62,6 +62,120 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      quiz_attempts: {
+        Row: {
+          answers: Json
+          id: string
+          quiz_code: string
+          score: number
+          student_id: string
+          submitted_at: string
+          tab_switches: number
+          total: number
+        }
+        Insert: {
+          answers?: Json
+          id?: string
+          quiz_code: string
+          score?: number
+          student_id: string
+          submitted_at?: string
+          tab_switches?: number
+          total?: number
+        }
+        Update: {
+          answers?: Json
+          id?: string
+          quiz_code?: string
+          score?: number
+          student_id?: string
+          submitted_at?: string
+          tab_switches?: number
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_attempts_quiz_code_fkey"
+            columns: ["quiz_code"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "quiz_attempts_quiz_code_fkey"
+            columns: ["quiz_code"]
+            isOneToOne: false
+            referencedRelation: "quizzes_public"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "quiz_attempts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quizzes: {
+        Row: {
+          activity_type: string
+          code: string
+          created_at: string
+          questions: Json
+          teacher_id: string
+          topic: string
+        }
+        Insert: {
+          activity_type: string
+          code: string
+          created_at?: string
+          questions?: Json
+          teacher_id: string
+          topic: string
+        }
+        Update: {
+          activity_type?: string
+          code?: string
+          created_at?: string
+          questions?: Json
+          teacher_id?: string
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quizzes_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saved_activities: {
         Row: {
           activity_type: string
@@ -106,7 +220,27 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      quizzes_public: {
+        Row: {
+          activity_type: string | null
+          code: string | null
+          created_at: string | null
+          topic: string | null
+        }
+        Insert: {
+          activity_type?: string | null
+          code?: string | null
+          created_at?: string | null
+          topic?: string | null
+        }
+        Update: {
+          activity_type?: string | null
+          code?: string | null
+          created_at?: string | null
+          topic?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       bump_ai_rate_limit: {
