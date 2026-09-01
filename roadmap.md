@@ -1,0 +1,6 @@
+- [ ] Add email/password and Google auth UI with role-aware signup
+- [ ] Add protected student quiz route with anti-cheat controls
+- [ ] Add protected teacher results route with CSV export
+- [ ] Connect generator header, fresh quiz creation, and sign-out
+- [ ] Add root auth-state invalidation listener
+- [ ] Run typecheck and resolve all security findings
