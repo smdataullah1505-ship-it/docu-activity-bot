@@ -9,7 +9,8 @@ export type StoredQuizItem = {
   sentence?: string;
   answer?: string;
   explanation?: string;
-  [key: string]: unknown;
+  reference?: string;
+  questionType?: string;
 };
 
 export type StoredQuestions = {
