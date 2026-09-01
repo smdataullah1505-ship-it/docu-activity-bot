@@ -10,11 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as SqlPracticeRouteImport } from './routes/sql-practice'
+import { Route as AuthenticatedQuizRouteImport } from './routes/_authenticated/quiz'
+import { Route as AuthenticatedQuizResultsCodeRouteImport } from './routes/_authenticated/quiz-results.$code'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SqlPracticeRoute = SqlPracticeRouteImport.update({
@@ -22,30 +35,60 @@ const SqlPracticeRoute = SqlPracticeRouteImport.update({
   path: '/sql-practice',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedQuizRoute = AuthenticatedQuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedQuizResultsCodeRoute =
+  AuthenticatedQuizResultsCodeRouteImport.update({
+    id: '/quiz-results/$code',
+    path: '/quiz-results/$code',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/quiz': typeof AuthenticatedQuizRoute
+  '/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/quiz': typeof AuthenticatedQuizRoute
+  '/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/_authenticated/quiz': typeof AuthenticatedQuizRoute
+  '/_authenticated/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sql-practice'
+  fullPaths: '/' | '/auth' | '/sql-practice' | '/quiz' | '/quiz-results/$code'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sql-practice'
-  id: '__root__' | '/' | '/sql-practice'
+  to: '/' | '/auth' | '/sql-practice' | '/quiz' | '/quiz-results/$code'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/sql-practice'
+    | '/_authenticated/quiz'
+    | '/_authenticated/quiz-results/$code'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
   SqlPracticeRoute: typeof SqlPracticeRoute
 }
 
@@ -58,6 +101,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sql-practice': {
       id: '/sql-practice'
       path: '/sql-practice'
@@ -65,11 +122,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SqlPracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/quiz': {
+      id: '/_authenticated/quiz'
+      path: '/quiz'
+      fullPath: '/quiz'
+      preLoaderRoute: typeof AuthenticatedQuizRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/quiz-results/$code': {
+      id: '/_authenticated/quiz-results/$code'
+      path: '/quiz-results/$code'
+      fullPath: '/quiz-results/$code'
+      preLoaderRoute: typeof AuthenticatedQuizResultsCodeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedQuizRoute: typeof AuthenticatedQuizRoute
+  AuthenticatedQuizResultsCodeRoute: typeof AuthenticatedQuizResultsCodeRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedQuizRoute: AuthenticatedQuizRoute,
+  AuthenticatedQuizResultsCodeRoute: AuthenticatedQuizResultsCodeRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
   SqlPracticeRoute: SqlPracticeRoute,
 }
 export const routeTree = rootRouteImport
