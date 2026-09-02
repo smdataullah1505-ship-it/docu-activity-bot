@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -71,6 +71,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getGeminiKey, setGeminiKey, clearGeminiKey, hasGeminiKey } from "@/lib/user-api-key";
+import { createQuiz } from "@/lib/quiz.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { useRootAuth } from "./__root";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -166,6 +169,8 @@ function loadPersisted(): Partial<PersistedState> {
 }
 
 function LectureLab() {
+  const navigate = useNavigate();
+  const { user } = useRootAuth();
   // All state starts at server-render defaults; the persisted session is
   // restored in an effect after mount to avoid hydration mismatches.
   const [step, setStep] = useState<Step>("upload");
@@ -255,6 +260,7 @@ function LectureLab() {
   const getCachedTopicsFn = useServerFn(getCachedTopics);
   const saveCachedTopicsFn = useServerFn(saveCachedTopics);
   const clearCachedTopicsFn = useServerFn(clearCachedTopics);
+  const createQuizFn = useServerFn(createQuiz);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -369,8 +375,8 @@ function LectureLab() {
     }
   };
 
-  const runGeneration = async (mode: ActivityKey, forceRegenerate = false) => {
-    if (!selectedTopic) return;
+  const runGeneration = async (mode: ActivityKey, forceRegenerate = false, forQuiz = false) => {
+    if (!selectedTopic) return null;
     try {
       setSelectedMode(mode);
       setGenerating(true);
@@ -398,7 +404,7 @@ function LectureLab() {
             setResult(cached.generatedJson as Record<string, unknown>);
             setCacheMeta({ source: "cache", createdAt: cached.createdAt });
             setGenerating(false);
-            return;
+            return cached.generatedJson as Record<string, unknown>;
           }
         } catch {
           /* cache lookup failed — fall through to fresh generation */
@@ -438,26 +444,29 @@ function LectureLab() {
 
       // 3. Save to cache (best-effort)
       const nowIso = new Date().toISOString();
-      try {
-        await saveCachedActivityFn({
-          data: {
-            documentName: fileName,
-            documentHash,
-            topic: selectedTopic,
-            activityType: mode,
-            difficulty,
-            questionCount,
-            generatedJson: parsed,
-            replace: forceRegenerate,
-          },
-        });
-      } catch (e) {
-        console.warn("Cache save failed", e);
+      if (!forQuiz) {
+        try {
+          await saveCachedActivityFn({
+            data: {
+              documentName: fileName,
+              documentHash,
+              topic: selectedTopic,
+              activityType: mode,
+              difficulty,
+              questionCount,
+              generatedJson: parsed,
+              replace: forceRegenerate,
+            },
+          });
+        } catch (e) {
+          console.warn("Cache save failed", e);
+        }
       }
 
       setResult(parsed);
       setCacheMeta({ source: "fresh", createdAt: nowIso });
       setGenerating(false);
+      return parsed;
     } catch (err) {
       setGenerating(false);
       let msg = err instanceof Error ? err.message : "Generation failed.";
@@ -466,6 +475,7 @@ function LectureLab() {
       }
       setGenerationError(msg);
       toast.error(msg);
+      return null;
     }
   };
 
@@ -534,6 +544,24 @@ function LectureLab() {
             onBack={() => setStep("activity")}
             onRegenerate={() => selectedMode && runGeneration(selectedMode, true)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onStartQuiz={async () => {
+              if (!selectedMode || (selectedMode !== "mcqs" && selectedMode !== "fillBlanks")) return;
+              if (!user) {
+                await navigate({ to: "/auth" });
+                return;
+              }
+              const fresh = await runGeneration(selectedMode, true, true);
+              if (!fresh) return;
+              try {
+                const created = await createQuizFn({
+                  data: { topic: selectedTopic, activityType: selectedMode, generatedJson: fresh },
+                });
+                toast.success(`Quiz ${created.code} created.`);
+                await navigate({ to: "/quiz-results/$code", params: { code: created.code } });
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Could not start the quiz.");
+              }
+            }}
           />
         )}
       </main>
@@ -651,6 +679,20 @@ function Header({
   onOpenSettings: () => void;
   keySaved: boolean;
 }) {
+  const { user } = useRootAuth();
+  const { queryClient } = Route.useRouteContext();
+  const navigate = useNavigate();
+  const [signingOut, setSigningOut] = useState(false);
+
+  const signOut = async () => {
+    setSigningOut(true);
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    await navigate({ to: "/auth", replace: true });
+    setSigningOut(false);
+  };
+
   return (
     <header className="no-print border-b border-border/60 bg-card/60 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
@@ -689,6 +731,16 @@ function Header({
           >
             <Settings className="h-4 w-4" />
           </Button>
+          {user ? (
+            <Button variant="outline" onClick={signOut} disabled={signingOut}>
+              {signingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Sign out
+            </Button>
+          ) : (
+            <Link to="/auth" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>
@@ -1033,6 +1085,7 @@ function ResultsStep({
   onBack,
   onRegenerate,
   onOpenSettings,
+  onStartQuiz,
 }: {
   topic: string;
   mode: ActivityKey | null;
@@ -1043,6 +1096,7 @@ function ResultsStep({
   onBack: () => void;
   onRegenerate: () => void;
   onOpenSettings: () => void;
+  onStartQuiz: () => void | Promise<void>;
 }) {
   const meta = MODES.find((m) => m.key === mode);
   return (
@@ -1064,6 +1118,11 @@ function ResultsStep({
           <Button onClick={() => window.print()} disabled={generating || !result}>
             <Printer className="mr-2 h-4 w-4" /> Print / Save PDF
           </Button>
+          {(mode === "mcqs" || mode === "fillBlanks") && (
+            <Button onClick={onStartQuiz} disabled={generating || !result}>
+              <ListChecks className="mr-2 h-4 w-4" /> Start Quiz
+            </Button>
+          )}
         </div>
       </div>
 

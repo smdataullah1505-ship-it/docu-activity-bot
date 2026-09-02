@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Google, Loader2, Sparkles } from "lucide-react";
+import { Chrome, Loader2, Sparkles } from "lucide-react";
 import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
@@ -170,7 +170,7 @@ function AuthPage() {
             <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
           </div>
           <Button variant="outline" className="w-full" onClick={signInWithGoogle} disabled={loading}>
-            <Google className="mr-2 h-4 w-4" /> Continue with Google
+            <Chrome className="mr-2 h-4 w-4" /> Continue with Google
           </Button>
         </section>
       </main>
