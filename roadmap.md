@@ -1,6 +1,7 @@
-- [ ] Add email/password and Google auth UI with role-aware signup
-- [ ] Add protected student quiz route with anti-cheat controls
-- [ ] Add protected teacher results route with CSV export
-- [ ] Connect generator header, fresh quiz creation, and sign-out
-- [ ] Add root auth-state invalidation listener
-- [ ] Run typecheck and resolve all security findings
+- [x] Add email/password and Google auth UI with role-aware signup
+- [x] Add protected student quiz route with anti-cheat controls
+- [x] Add protected teacher results route with CSV export
+- [x] Connect generator header, fresh quiz creation, and sign-out
+- [x] Add root auth-state invalidation listener
+- [x] Run typecheck and resolve all security findings
+- [ ] Remove quiz role distinction and apply ownership-based quiz policies

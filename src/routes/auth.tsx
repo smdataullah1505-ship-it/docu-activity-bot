@@ -34,7 +34,6 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<"teacher" | "student">("student");
   const [loading, setLoading] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
@@ -59,7 +58,7 @@ function AuthPage() {
           password,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { full_name: fullName.trim(), role },
+            data: { full_name: fullName.trim() },
           },
         });
         if (error) throw error;
@@ -148,18 +147,6 @@ function AuthPage() {
               <label className="text-sm font-medium" htmlFor="auth-password">Password</label>
               <Input id="auth-password" className="mt-1.5" type="password" autoComplete={mode === "sign-up" ? "new-password" : "current-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
-            {mode === "sign-up" && (
-              <fieldset>
-                <legend className="text-sm font-medium">I am signing up as</legend>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {(["student", "teacher"] as const).map((item) => (
-                    <Button key={item} type="button" variant={role === item ? "default" : "outline"} onClick={() => setRole(item)} className="capitalize">
-                      {item}
-                    </Button>
-                  ))}
-                </div>
-              </fieldset>
-            )}
             <Button className="w-full" type="submit" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {mode === "sign-in" ? "Sign in" : "Create account"}

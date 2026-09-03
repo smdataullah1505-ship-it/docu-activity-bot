@@ -19,15 +19,6 @@ export const createQuiz = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => CreateSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", context.userId)
-      .maybeSingle();
-    if (!profile || profile.role !== "teacher") {
-      throw new Error("Only teacher accounts can start a quiz.");
-    }
-
     const questions = normalizeQuizQuestions(data.activityType, data.generatedJson);
     if (questions.items.length === 0) {
       throw new Error("This activity has no scorable questions.");
