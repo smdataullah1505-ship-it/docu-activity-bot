@@ -11,9 +11,9 @@ export const Route = createFileRoute("/_authenticated/quiz-results/$code")({
   head: () => ({
     meta: [
       { title: "Quiz Results — Lecture Lab AI" },
-      { name: "description", content: "Review sorted student quiz results and download a CSV report." },
+      { name: "description", content: "Review quiz results and download a CSV report." },
       { property: "og:title", content: "Quiz Results — Lecture Lab AI" },
-      { property: "og:description", content: "Review student quiz results and download a CSV report." },
+      { property: "og:description", content: "Review quiz results and download a CSV report." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -67,7 +67,7 @@ function QuizResults() {
       <header className="no-print border-b border-border/60 bg-card/60">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link to="/" className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg gradient-hero text-primary-foreground"><Sparkles className="h-4 w-4" /></span><span className="font-bold">Lecture Lab AI</span></Link>
-          <Link to="/quiz" className="text-sm font-medium text-muted-foreground hover:text-foreground">Student quiz</Link>
+          <Link to="/quiz" className="text-sm font-medium text-muted-foreground hover:text-foreground">Join a quiz</Link>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -79,7 +79,7 @@ function QuizResults() {
             </div>
             <div className="overflow-x-auto surface-card">
               <table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-border bg-muted/40"><tr>{["Name", "Email", "Score", "%", "Tab switches", "Date"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{results.attempts.map((attempt, index) => <tr key={`${attempt.email}-${attempt.submittedAt}-${index}`} className="border-b border-border last:border-0"><td className="px-4 py-3 font-medium">{attempt.studentName}</td><td className="px-4 py-3 text-muted-foreground">{attempt.email}</td><td className="px-4 py-3">{attempt.score} / {attempt.total}</td><td className="px-4 py-3">{attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0}%</td><td className="px-4 py-3">{attempt.tabSwitches}</td><td className="px-4 py-3 text-muted-foreground">{new Date(attempt.submittedAt).toLocaleString()}</td></tr>)}</tbody></table>
-              {results.attempts.length === 0 && <p className="p-8 text-center text-muted-foreground">No students have submitted this quiz yet.</p>}
+              {results.attempts.length === 0 && <p className="p-8 text-center text-muted-foreground">No one has submitted this quiz yet.</p>}
             </div>
           </section>
         ) : null}

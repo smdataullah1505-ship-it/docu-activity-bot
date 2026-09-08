@@ -50,8 +50,8 @@ export const getQuizForStudent = createServerFn({ method: "POST" })
     const code = data.code.trim().toUpperCase();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: quiz } = await supabaseAdmin
-      .from("quizzes")
+    const { data: quiz } = await context.supabase
+      .from("quizzes_public")
       .select("code, topic, activity_type, questions")
       .eq("code", code)
       .maybeSingle();
