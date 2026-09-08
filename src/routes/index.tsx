@@ -885,7 +885,15 @@ function UploadStep({
             />
           </div>
         </div>
+
+        <p className="mt-4 text-sm text-muted-foreground">
+          Got a code from your teacher?{" "}
+          <Link to="/quiz" className="font-medium text-primary underline-offset-4 hover:underline">
+            Join a quiz
+          </Link>
+        </p>
       </div>
+
 
       <aside className="surface-elevated p-6">
         <h3 className="text-lg font-semibold">What you'll get</h3>
