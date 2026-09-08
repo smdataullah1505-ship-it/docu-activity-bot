@@ -52,10 +52,17 @@ export const getQuizForStudent = createServerFn({ method: "POST" })
 
     const { data: quiz } = await context.supabase
       .from("quizzes_public")
-      .select("code, topic, activity_type, questions")
+      .select("code, topic, activity_type")
       .eq("code", code)
       .maybeSingle();
     if (!quiz) throw new Error("No quiz found for that code.");
+
+    const { data: storedQuiz } = await supabaseAdmin
+      .from("quizzes")
+      .select("questions")
+      .eq("code", code)
+      .maybeSingle();
+    if (!storedQuiz) throw new Error("No quiz found for that code.");
 
     const { data: existing } = await supabaseAdmin
       .from("quiz_attempts")
@@ -69,7 +76,7 @@ export const getQuizForStudent = createServerFn({ method: "POST" })
       topic: quiz.topic,
       activityType: quiz.activity_type,
       // Answers and explanations are stripped here and never reach the browser.
-      questions: stripAnswers(quiz.questions as unknown as StoredQuestions),
+      questions: stripAnswers(storedQuiz.questions as unknown as StoredQuestions),
       attempt: existing ?? null,
     };
   });
