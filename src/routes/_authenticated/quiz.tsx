@@ -47,7 +47,7 @@ function StudentQuiz() {
     if (!quiz || submission) return;
     const warn = () => {
       setTabSwitches((count) => count + 1);
-      toast.warning("Tab switch detected. Your teacher will see this in the results.");
+      toast.warning("Tab switch detected. The quiz owner will see this in the results.");
     };
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") warn();
@@ -110,7 +110,7 @@ function StudentQuiz() {
         {!quiz ? (
           <section className="mx-auto max-w-md surface-elevated p-6">
             <h1 className="text-2xl font-bold">Join a quiz</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Enter the six-character code shared by your teacher.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Enter the six-character code shared by the quiz owner.</p>
             <form className="mt-6 space-y-4" onSubmit={loadQuiz}>
               <Input aria-label="Quiz code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="ABC234" maxLength={12} required />
               <Button className="w-full" disabled={loading || !code.trim()}>
