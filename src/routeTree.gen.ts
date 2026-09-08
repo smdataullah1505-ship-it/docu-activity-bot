@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as SqlPracticeRouteImport } from './routes/sql-practice'
+import { Route as AuthenticatedMyQuizzesRouteImport } from './routes/_authenticated/my-quizzes'
 import { Route as AuthenticatedQuizRouteImport } from './routes/_authenticated/quiz'
 import { Route as AuthenticatedQuizResultsCodeRouteImport } from './routes/_authenticated/quiz-results.$code'
 
@@ -35,6 +36,11 @@ const SqlPracticeRoute = SqlPracticeRouteImport.update({
   path: '/sql-practice',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedMyQuizzesRoute = AuthenticatedMyQuizzesRouteImport.update({
+  id: '/my-quizzes',
+  path: '/my-quizzes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedQuizRoute = AuthenticatedQuizRouteImport.update({
   id: '/quiz',
   path: '/quiz',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/my-quizzes': typeof AuthenticatedMyQuizzesRoute
   '/quiz': typeof AuthenticatedQuizRoute
   '/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/my-quizzes': typeof AuthenticatedMyQuizzesRoute
   '/quiz': typeof AuthenticatedQuizRoute
   '/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
@@ -67,20 +75,34 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/sql-practice': typeof SqlPracticeRoute
+  '/_authenticated/my-quizzes': typeof AuthenticatedMyQuizzesRoute
   '/_authenticated/quiz': typeof AuthenticatedQuizRoute
   '/_authenticated/quiz-results/$code': typeof AuthenticatedQuizResultsCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/sql-practice' | '/quiz' | '/quiz-results/$code'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/sql-practice'
+    | '/my-quizzes'
+    | '/quiz'
+    | '/quiz-results/$code'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/sql-practice' | '/quiz' | '/quiz-results/$code'
+  to:
+    | '/'
+    | '/auth'
+    | '/sql-practice'
+    | '/my-quizzes'
+    | '/quiz'
+    | '/quiz-results/$code'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/sql-practice'
+    | '/_authenticated/my-quizzes'
     | '/_authenticated/quiz'
     | '/_authenticated/quiz-results/$code'
   fileRoutesById: FileRoutesById
@@ -122,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SqlPracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/my-quizzes': {
+      id: '/_authenticated/my-quizzes'
+      path: '/my-quizzes'
+      fullPath: '/my-quizzes'
+      preLoaderRoute: typeof AuthenticatedMyQuizzesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/quiz': {
       id: '/_authenticated/quiz'
       path: '/quiz'
@@ -140,11 +169,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedMyQuizzesRoute: typeof AuthenticatedMyQuizzesRoute
   AuthenticatedQuizRoute: typeof AuthenticatedQuizRoute
   AuthenticatedQuizResultsCodeRoute: typeof AuthenticatedQuizResultsCodeRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedMyQuizzesRoute: AuthenticatedMyQuizzesRoute,
   AuthenticatedQuizRoute: AuthenticatedQuizRoute,
   AuthenticatedQuizResultsCodeRoute: AuthenticatedQuizResultsCodeRoute,
 }

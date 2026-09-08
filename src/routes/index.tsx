@@ -712,6 +712,23 @@ function Header({
           >
             SQL Practice
           </Link>
+          {user ? (
+            <>
+              <Link
+                to="/quiz"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Join Quiz
+              </Link>
+              <Link
+                to="/my-quizzes"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                My Quizzes
+              </Link>
+            </>
+          ) : null}
+
           <a
             href="#"
             onClick={(e) => {
